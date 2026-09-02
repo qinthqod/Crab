@@ -28,6 +28,8 @@ Coding Harness 产生的本地存储。
   least 1 GB are labelled for attention; labels never auto-select or restrict them.
 - **Bilingual UI / 双语界面** — follows the macOS language by default and supports
   an explicit Chinese or English preference.
+- **In-app updates / 应用内更新** — checks Crab's official GitHub Releases and,
+  after explicit confirmation, verifies and installs a matching signed archive.
 
 Current rules cover installed products such as ChatGPT, Claude/Claude Code,
 Cursor, Codex, DeepSeek Harness, Windsurf, TRAE, Zed, Ollama, and 豆包 variants.
@@ -55,14 +57,18 @@ The detailed contracts live in [SPEC-safe-scan.md](SPEC-safe-scan.md),
 ## Requirements
 
 - macOS 14 or later
-- Apple Silicon for the downloadable v0.1.0 beta
+- Apple Silicon for the downloadable v0.1.1 beta
 - Intel Macs can build Crab from source with a compatible Swift 6 toolchain
 - Swift 6 toolchain for source builds
 
 ## Install the public beta
 
-Download `Crab-0.1.0-macOS-arm64.zip` and `SHA256SUMS.txt` from the latest GitHub Release,
+Download `Crab-0.1.1-macOS-arm64.zip` and `SHA256SUMS.txt` from the latest GitHub Release,
 verify the checksum, unzip it, and move `Crab.app` to Applications.
+
+Version 0.1.1 adds user-confirmed updates inside Crab. Because 0.1.0 did not contain
+the installer, upgrading from 0.1.0 to 0.1.1 is the final manual update; later
+compatible releases can be installed from Settings.
 
 The first beta is ad-hoc signed because the project does not yet have an Apple
 Developer ID certificate. It is not notarized. macOS may require you to Control-click

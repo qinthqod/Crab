@@ -8,6 +8,7 @@ if rg -n --glob '*.swift' \
   --glob '!SystemTrashMover.swift' \
   --glob '!HarnessUpdate.swift' \
   --glob '!HarnessUsage.swift' \
+  --glob '!CrabAppInstaller.swift' \
   "$dangerous_pattern" $scan_roots; then
   echo "Dangerous filesystem or process API found outside a reviewed boundary." >&2
   exit 1
@@ -21,7 +22,10 @@ fi
 
 update_process_count="$(rg -c 'let process = Process\(\)' Sources/CrabAppSupport/HarnessUpdate.swift || true)"
 usage_process_count="$(rg -c 'let process = Process\(\)' Sources/CrabAppSupport/HarnessUsage.swift || true)"
-if [ "$update_process_count" != "1" ] || [ "$usage_process_count" != "1" ]; then
+app_update_process_count="$(rg -c 'let process = Process\(\)' Sources/CrabAppSupport/CrabAppInstaller.swift || true)"
+app_update_cleanup_count="$(rg -c 'FileManager\.default\.removeItem|manager\.removeItem' Sources/CrabAppSupport/CrabAppInstaller.swift || true)"
+if [ "$update_process_count" != "1" ] || [ "$usage_process_count" != "1" ] \
+  || [ "$app_update_process_count" != "1" ] || [ "$app_update_cleanup_count" != "2" ]; then
   echo "Reviewed process boundaries changed; inspect Harness update and usage execution before release." >&2
   exit 1
 fi

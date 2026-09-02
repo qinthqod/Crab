@@ -19,9 +19,9 @@ private func expect(
 }
 
 private let tests: [(String, () throws -> Void)] = [
-    ("Version identifies the 0.1.0 release", {
+    ("Version identifies the 0.1.1 release", {
         try expect(
-            CrabCore.version == "0.1.0",
+            CrabCore.version == "0.1.1",
             "Expected release version, got \(CrabCore.version)"
         )
     }),
@@ -69,56 +69,253 @@ private let tests: [(String, () throws -> Void)] = [
             "An invalid stored preference must fail safely to the system language"
         )
     }),
-    ("Crab update comparison reports only a valid newer release", {
-        let releaseURL = URL(string: "https://github.com/example/crab/releases/tag/v0.2.0")!
-        try expect(
-            CrabAppUpdateChecker.evaluate(
-                currentVersion: "0.1.0",
-                latestVersion: "0.2.0",
-                releaseURL: releaseURL
-            ) == .available(latestVersion: "0.2.0", releaseURL: releaseURL),
-            "A newer semantic version must be offered"
+    ("Crab update checker accepts only an exact signed release asset", {
+        let releaseData = Data(#"""
+        [{
+            "tag_name": "v0.3.0",
+            "html_url": "https://github.com/qinthqod/Crab/releases/tag/v0.3.0",
+            "draft": false,
+            "assets": [{
+                "name": "Crab-0.3.0-macOS-arm64.zip",
+                "state": "uploaded",
+                "content_type": "application/zip",
+                "size": 3326908,
+                "digest": "sha256:647b216f734bc6f9aa5ad11a1b3bcb6e397005c1cfd25904180e6ea4bdbf72c3",
+                "browser_download_url": "https://github.com/qinthqod/Crab/releases/download/v0.3.0/Crab-0.3.0-macOS-arm64.zip"
+            }]
+        }]
+        """#.utf8)
+        let offer = CrabAppUpdateOffer(
+            latestVersion: "v0.3.0",
+            releaseURL: URL(string: "https://github.com/qinthqod/Crab/releases/tag/v0.3.0")!,
+            assetURL: URL(string: "https://github.com/qinthqod/Crab/releases/download/v0.3.0/Crab-0.3.0-macOS-arm64.zip")!,
+            assetName: "Crab-0.3.0-macOS-arm64.zip",
+            assetSize: 3_326_908,
+            sha256: "647b216f734bc6f9aa5ad11a1b3bcb6e397005c1cfd25904180e6ea4bdbf72c3"
         )
         try expect(
             CrabAppUpdateChecker.evaluate(
                 currentVersion: "0.2.0",
-                latestVersion: "0.2.0",
-                releaseURL: releaseURL
+                releaseData: releaseData,
+                architecture: "arm64"
+            ) == .available(offer),
+            "A newer release with an exact architecture asset and SHA-256 digest must be offered"
+        )
+        try expect(
+            CrabAppUpdateChecker.evaluate(
+                currentVersion: "0.3.0",
+                releaseData: releaseData,
+                architecture: "arm64"
             ) == .upToDate,
             "The current release must report up to date"
         )
         try expect(
             CrabAppUpdateChecker.evaluate(
                 currentVersion: "development",
-                latestVersion: "0.2.0",
-                releaseURL: releaseURL
+                releaseData: releaseData,
+                architecture: "arm64"
             ) == .unavailable,
             "A non-release build must not offer an update"
         )
-        try expect(
-            CrabAppUpdateChecker.evaluate(
-                currentVersion: "0.1.0",
-                latestVersion: "0.2.0",
-                releaseURL: URL(string: "http://example.com/crab.zip")!
-            ) == .unavailable,
-            "A non-HTTPS release URL must fail closed"
-        )
     }),
-    ("Crab update checker accepts GitHub Releases metadata", {
-        let releaseData = Data(#"""
-        {
+    ("Crab update checker rejects unsafe release assets", {
+        let missingDigest = Data(#"""
+        [{
             "tag_name": "v0.3.0",
-            "html_url": "https://github.com/example/crab/releases/tag/v0.3.0"
-        }
+            "html_url": "https://github.com/qinthqod/Crab/releases/tag/v0.3.0",
+            "draft": false,
+            "assets": [{
+                "name": "Crab-0.3.0-macOS-arm64.zip",
+                "state": "uploaded",
+                "content_type": "application/zip",
+                "size": 10,
+                "digest": null,
+                "browser_download_url": "https://github.com/qinthqod/Crab/releases/download/v0.3.0/Crab-0.3.0-macOS-arm64.zip"
+            }]
+        }]
         """#.utf8)
-        let releaseURL = URL(string: "https://github.com/example/crab/releases/tag/v0.3.0")!
         try expect(
             CrabAppUpdateChecker.evaluate(
                 currentVersion: "0.2.0",
-                releaseData: releaseData
-            ) == .available(latestVersion: "v0.3.0", releaseURL: releaseURL),
-            "A standard GitHub latest-release response must be accepted"
+                releaseData: missingDigest,
+                architecture: "arm64"
+            ) == .unavailable,
+            "A release asset without a SHA-256 digest must fail closed"
         )
+
+        let wrongHost = Data(#"""
+        [{
+            "tag_name": "v0.3.0",
+            "html_url": "https://github.com/qinthqod/Crab/releases/tag/v0.3.0",
+            "draft": false,
+            "assets": [{
+                "name": "Crab-0.3.0-macOS-arm64.zip",
+                "state": "uploaded",
+                "content_type": "application/zip",
+                "size": 10,
+                "digest": "sha256:647b216f734bc6f9aa5ad11a1b3bcb6e397005c1cfd25904180e6ea4bdbf72c3",
+                "browser_download_url": "https://example.com/Crab-0.3.0-macOS-arm64.zip"
+            }]
+        }]
+        """#.utf8)
+        try expect(
+            CrabAppUpdateChecker.evaluate(
+                currentVersion: "0.2.0",
+                releaseData: wrongHost,
+                architecture: "arm64"
+            ) == .unavailable,
+            "An asset outside the official GitHub repository must fail closed"
+        )
+    }),
+    ("Crab update digest verifies SHA-256 without loading an archive contract", {
+        try expect(
+            CrabUpdateDigest.sha256Hex(of: Data("abc".utf8))
+                == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            "The updater must use a standard SHA-256 digest"
+        )
+        try withTemporaryHome { root in
+            let archive = root.appendingPathComponent("Crab.zip")
+            try Data("abc".utf8).write(to: archive)
+            let digest = try CrabUpdateDigest.sha256Hex(ofFileAt: archive)
+            try expect(
+                digest
+                    == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                "The updater must stream the downloaded archive through SHA-256"
+            )
+        }
+    }),
+    ("Crab update package validation checks bundle identity version and signature", {
+        try withTemporaryHome { root in
+            let app = try makeSignedCrabApplication(in: root, version: "0.2.0")
+            try CrabUpdatePackageValidator.validateApplication(
+                at: app,
+                expectedVersion: "v0.2.0"
+            )
+
+            let executable = app.appendingPathComponent("Contents/MacOS/Crab")
+            try Data("tampered".utf8).write(to: executable)
+            try expectThrows("A modified update application must fail signature validation") {
+                try CrabUpdatePackageValidator.validateApplication(
+                    at: app,
+                    expectedVersion: "v0.2.0"
+                )
+            }
+        }
+    }),
+    ("Crab update installer atomically replaces only the revalidated application", {
+        try withTemporaryHome { root in
+            let currentRoot = root.appendingPathComponent("Current", isDirectory: true)
+            let stagedRoot = root.appendingPathComponent("Staged", isDirectory: true)
+            try FileManager.default.createDirectory(at: currentRoot, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: stagedRoot, withIntermediateDirectories: true)
+            let current = try makeSignedCrabApplication(in: currentRoot, version: "0.1.0")
+            let staged = try makeSignedCrabApplication(in: stagedRoot, version: "0.2.0")
+            let plan = try CrabUpdateInstallationPlan.prepare(
+                currentAppURL: current,
+                stagedAppURL: staged,
+                expectedVersion: "v0.2.0"
+            )
+            let installed = try CrabAppUpdateInstaller.install(plan)
+            try expect(installed == current, "The updated app must remain at the original path")
+            let installedVersion = try CrabUpdatePackageValidator.applicationVersion(at: current)
+            try expect(
+                installedVersion == "0.2.0",
+                "The replacement app version must be installed"
+            )
+        }
+    }),
+    ("Crab update installer refuses a current application changed after preparation", {
+        try withTemporaryHome { root in
+            let currentRoot = root.appendingPathComponent("Current", isDirectory: true)
+            let stagedRoot = root.appendingPathComponent("Staged", isDirectory: true)
+            try FileManager.default.createDirectory(at: currentRoot, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: stagedRoot, withIntermediateDirectories: true)
+            let current = try makeSignedCrabApplication(in: currentRoot, version: "0.1.0")
+            let staged = try makeSignedCrabApplication(in: stagedRoot, version: "0.2.0")
+            let plan = try CrabUpdateInstallationPlan.prepare(
+                currentAppURL: current,
+                stagedAppURL: staged,
+                expectedVersion: "v0.2.0"
+            )
+            try Data("changed".utf8).write(
+                to: current.appendingPathComponent("Contents/change-marker")
+            )
+            try expectThrows("A changed current application must not be replaced") {
+                _ = try CrabAppUpdateInstaller.install(plan)
+            }
+            let preservedVersion = try CrabUpdatePackageValidator.applicationVersion(at: current)
+            try expect(
+                preservedVersion == "0.1.0",
+                "The original application must remain after rejected replacement"
+            )
+        }
+    }),
+    ("Crab update installer verifies and extracts a downloaded release archive", {
+        try withTemporaryHome { root in
+            let currentRoot = root.appendingPathComponent("Current", isDirectory: true)
+            let payloadRoot = root.appendingPathComponent("Payload", isDirectory: true)
+            try FileManager.default.createDirectory(at: currentRoot, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: payloadRoot, withIntermediateDirectories: true)
+            let current = try makeSignedCrabApplication(in: currentRoot, version: "0.1.0")
+            _ = try makeSignedCrabApplication(in: payloadRoot, version: "0.2.0")
+            let architecture = CrabAppUpdateChecker.currentArchitecture
+            let assetName = "Crab-0.2.0-macOS-\(architecture).zip"
+            let archive = root.appendingPathComponent(assetName)
+            try makeZipArchive(from: payloadRoot.appendingPathComponent("Crab.app"), at: archive)
+            let size = try FileManager.default.attributesOfItem(atPath: archive.path)[.size] as! NSNumber
+            let digest = try CrabUpdateDigest.sha256Hex(ofFileAt: archive)
+            let offer = CrabAppUpdateOffer(
+                latestVersion: "v0.2.0",
+                releaseURL: URL(string: "https://github.com/qinthqod/Crab/releases/tag/v0.2.0")!,
+                assetURL: URL(string: "https://github.com/qinthqod/Crab/releases/download/v0.2.0/\(assetName)")!,
+                assetName: assetName,
+                assetSize: size.int64Value,
+                sha256: digest
+            )
+            let plan = try CrabAppUpdateInstaller.prepareDownloadedArchive(
+                archive,
+                offer: offer,
+                currentAppURL: current
+            )
+            _ = try CrabAppUpdateInstaller.install(plan)
+            let installedVersion = try CrabUpdatePackageValidator.applicationVersion(at: current)
+            try expect(
+                installedVersion == "0.2.0",
+                "A verified downloaded archive must install its expected Crab version"
+            )
+
+            let wrongDigestOffer = CrabAppUpdateOffer(
+                latestVersion: offer.latestVersion,
+                releaseURL: offer.releaseURL,
+                assetURL: offer.assetURL,
+                assetName: offer.assetName,
+                assetSize: offer.assetSize,
+                sha256: String(repeating: "0", count: 64)
+            )
+            try expectThrows("A downloaded archive with a mismatched digest must fail closed") {
+                _ = try CrabAppUpdateInstaller.prepareDownloadedArchive(
+                    archive,
+                    offer: wrongDigestOffer,
+                    currentAppURL: current
+                )
+            }
+
+            let unsafeNameOffer = CrabAppUpdateOffer(
+                latestVersion: offer.latestVersion,
+                releaseURL: offer.releaseURL,
+                assetURL: offer.assetURL,
+                assetName: "../Crab-0.2.0-macOS-arm64.zip",
+                assetSize: offer.assetSize,
+                sha256: offer.sha256
+            )
+            try expectThrows("An update asset name must not escape the staging directory") {
+                _ = try CrabAppUpdateInstaller.prepareDownloadedArchive(
+                    archive,
+                    offer: unsafeNameOffer,
+                    currentAppURL: current
+                )
+            }
+        }
     }),
     ("Rule validation accepts an exact relative trash leaf", {
         let rule = try RuleValidator.decode(data: validRuleData())
@@ -2130,6 +2327,68 @@ private func makeFixtureApplication(
     try data.write(to: contents.appendingPathComponent("Info.plist"))
     try Data(repeating: 7, count: 8_192).write(to: resources.appendingPathComponent("fixture.bin"))
     return appURL.standardizedFileURL
+}
+
+private func makeSignedCrabApplication(in root: URL, version: String) throws -> URL {
+    let appURL = root.appendingPathComponent("Crab.app", isDirectory: true)
+    let contents = appURL.appendingPathComponent("Contents", isDirectory: true)
+    let executableDirectory = contents.appendingPathComponent("MacOS", isDirectory: true)
+    try FileManager.default.createDirectory(
+        at: executableDirectory,
+        withIntermediateDirectories: true
+    )
+    let executable = executableDirectory.appendingPathComponent("Crab")
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: executable)
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o755],
+        ofItemAtPath: executable.path
+    )
+    let plist: [String: Any] = [
+        "CFBundleIdentifier": "dev.crab.cleaner",
+        "CFBundleExecutable": "Crab",
+        "CFBundleName": "Crab",
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": version,
+    ]
+    let plistData = try PropertyListSerialization.data(
+        fromPropertyList: plist,
+        format: .xml,
+        options: 0
+    )
+    try plistData.write(to: contents.appendingPathComponent("Info.plist"))
+
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+    process.arguments = [
+        "--force", "--deep", "--sign", "-",
+        "--requirements", "=designated => identifier \"dev.crab.cleaner\"",
+        appURL.path,
+    ]
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        throw TestFailure(description: "Could not sign Crab update fixture")
+    }
+    return appURL
+}
+
+private func makeZipArchive(from appURL: URL, at archiveURL: URL) throws {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+    process.arguments = [
+        "-c", "-k", "--sequesterRsrc", "--keepParent",
+        appURL.path,
+        archiveURL.path,
+    ]
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        throw TestFailure(description: "Could not create Crab update archive fixture")
+    }
 }
 
 private func setModificationDateRecursively(_ root: URL, to date: Date) throws {

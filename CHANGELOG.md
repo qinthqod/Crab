@@ -3,6 +3,20 @@
 All notable changes to Crab are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-09-02
+
+### Added
+
+- User-confirmed in-app updates from Crab's official GitHub Releases.
+- Download, size, SHA-256, bundle identity, version, file-structure, and code-signature validation before installation.
+- Same-volume atomic app replacement with automatic relaunch and safe failure behavior.
+
+### Security
+
+- Update metadata, redirects, archives, and extracted applications are treated as untrusted input and fail closed.
+- Only exact architecture-specific Crab release assets from allowlisted GitHub hosts are accepted.
+- A failed verification or installation leaves the currently installed Crab application unchanged.
+
 ## [0.1.0] - 2026-09-02
 
 ### Added

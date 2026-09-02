@@ -5,6 +5,21 @@ import ServiceManagement
 
 @MainActor
 final class CrabSettingsModel: ObservableObject {
+    enum UpdateActionState: Equatable {
+        case idle
+        case downloading
+        case installing
+        case relaunching
+        case failed(String)
+
+        var isBusy: Bool {
+            switch self {
+            case .downloading, .installing, .relaunching: true
+            case .idle, .failed: false
+            }
+        }
+    }
+
     enum LaunchAtLoginState: Equatable {
         case disabled
         case enabled
@@ -14,6 +29,7 @@ final class CrabSettingsModel: ObservableObject {
 
     @Published private(set) var launchAtLoginState: LaunchAtLoginState = .unavailable
     @Published private(set) var updateState: CrabAppUpdateStatus = .idle
+    @Published private(set) var updateActionState: UpdateActionState = .idle
     @Published var operationError: String?
 
     init() {
@@ -63,7 +79,8 @@ final class CrabSettingsModel: ObservableObject {
     }
 
     func checkForUpdates() {
-        guard updateState != .checking else { return }
+        guard updateState != .checking, !updateActionState.isBusy else { return }
+        updateActionState = .idle
         updateState = .checking
         let version = currentVersion
         let feedURL = (Bundle.main.object(forInfoDictionaryKey: "CrabUpdateFeedURL") as? String)
@@ -74,6 +91,40 @@ final class CrabSettingsModel: ObservableObject {
                 currentVersion: version,
                 feedURL: feedURL
             )
+        }
+    }
+
+    func installAvailableUpdate() {
+        guard case let .available(offer) = updateState,
+              !updateActionState.isBusy
+        else { return }
+
+        updateActionState = .downloading
+        let currentAppURL = Bundle.main.bundleURL
+        Task {
+            do {
+                let installedURL = try await CrabAppUpdateInstaller.downloadAndInstall(
+                    offer: offer,
+                    currentAppURL: currentAppURL,
+                    progress: { [weak self] phase in
+                        await MainActor.run {
+                            switch phase {
+                            case .downloading: self?.updateActionState = .downloading
+                            case .installing: self?.updateActionState = .installing
+                            }
+                        }
+                    }
+                )
+                updateActionState = .relaunching
+                relaunchApplication(at: installedURL)
+            } catch {
+                updateActionState = .failed(
+                    CrabL10n.text(
+                        "更新未安装，当前版本保持不变。请检查网络后重试。",
+                        "The update was not installed. Your current version is unchanged. Check your connection and try again."
+                    )
+                )
+            }
         }
     }
 
@@ -88,5 +139,27 @@ final class CrabSettingsModel: ObservableObject {
     private func openSystemSettings(_ address: String) {
         guard let url = URL(string: address) else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    private func relaunchApplication(at appURL: URL) {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(
+            at: appURL,
+            configuration: configuration
+        ) { _, error in
+            Task { @MainActor [weak self] in
+                if let error {
+                    self?.updateActionState = .failed(
+                        CrabL10n.text(
+                            "更新已安装，但无法自动重新打开 Crab。请手动打开。\n\(error.localizedDescription)",
+                            "The update was installed, but Crab could not reopen automatically. Open it manually.\n\(error.localizedDescription)"
+                        )
+                    )
+                } else {
+                    NSApp.terminate(nil)
+                }
+            }
+        }
     }
 }

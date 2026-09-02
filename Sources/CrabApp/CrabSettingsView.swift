@@ -120,24 +120,32 @@ struct CrabSettingsView: View {
                     subtitle: currentVersionText
                 ) {
                     Button {
-                        settings.checkForUpdates()
+                        performUpdateAction()
                     } label: {
-                        if settings.updateState == .checking {
-                            ProgressView().controlSize(.small)
+                        if isUpdateBusy {
+                            HStack(spacing: 6) {
+                                CrabLoadingIndicator(size: 18, motion: .pinch)
+                                Text(updateButtonTitle)
+                            }
                         } else {
-                            Text(CrabL10n.text("检查更新", "Check for Updates"))
+                            Text(updateButtonTitle)
                         }
                     }
-                    .disabled(settings.updateState == .checking)
-                    .frame(minWidth: 100)
+                    .disabled(isUpdateBusy)
+                    .frame(minWidth: 112)
                 }
 
                 Divider().padding(.leading, 44)
 
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: updateStatusIcon)
-                        .foregroundStyle(updateStatusColor)
-                        .frame(width: 32, height: 32)
+                    if isUpdateBusy {
+                        CrabLoadingIndicator(size: 28, motion: .scuttle)
+                            .frame(width: 32, height: 32)
+                    } else {
+                        Image(systemName: updateStatusIcon)
+                            .foregroundStyle(updateStatusColor)
+                            .frame(width: 32, height: 32)
+                    }
                     VStack(alignment: .leading, spacing: 4) {
                         Text(updateStatusTitle)
                             .font(.system(size: 13, weight: .semibold))
@@ -237,18 +245,42 @@ struct CrabSettingsView: View {
     }
 
     private var updateStatusTitle: String {
-        switch settings.updateState {
+        switch settings.updateActionState {
+        case .downloading:
+            return CrabL10n.text("正在下载新版 Crab", "Downloading Crab Update")
+        case .installing:
+            return CrabL10n.text("正在安全安装", "Installing Securely")
+        case .relaunching:
+            return CrabL10n.text("正在重新打开 Crab", "Reopening Crab")
+        case .failed:
+            return CrabL10n.text("更新未完成", "Update Not Completed")
+        case .idle:
+            break
+        }
+        return switch settings.updateState {
         case .idle: CrabL10n.text("准备检查", "Ready to Check")
         case .checking: CrabL10n.text("正在检查更新", "Checking for Updates")
         case .upToDate: CrabL10n.text("Crab 已是最新版本", "Crab Is Up to Date")
-        case let .available(version, _): CrabL10n.format("发现新版本 %@", "Version %@ Is Available", version)
+        case let .available(offer): CrabL10n.format("发现新版本 %@", "Version %@ Is Available", offer.latestVersion)
         case .unavailable: CrabL10n.text("此构建尚未配置更新源", "No Update Source Is Configured")
         case .failed: CrabL10n.text("暂时无法检查更新", "Unable to Check for Updates")
         }
     }
 
     private var updateStatusDetail: String {
-        switch settings.updateState {
+        switch settings.updateActionState {
+        case .downloading:
+            return CrabL10n.text("正在从 Crab 官方 GitHub Release 下载更新。", "Downloading from Crab's official GitHub Release.")
+        case .installing:
+            return CrabL10n.text("正在校验大小、SHA-256、版本与应用签名，然后原子替换。", "Verifying size, SHA-256, version, and app signature before atomic replacement.")
+        case .relaunching:
+            return CrabL10n.text("新版已安装，Crab 即将重新打开。", "The update is installed and Crab is about to reopen.")
+        case let .failed(message):
+            return message
+        case .idle:
+            break
+        }
+        return switch settings.updateState {
         case .idle:
             CrabL10n.text("Crab 只会连接已配置的 HTTPS 更新源。", "Crab connects only to its configured HTTPS update source.")
         case .checking:
@@ -256,7 +288,7 @@ struct CrabSettingsView: View {
         case .upToDate:
             CrabL10n.text("当前没有可用更新。", "No update is currently available.")
         case .available:
-            CrabL10n.text("新版已发布，可以准备更新。", "A newer Crab release is ready.")
+            CrabL10n.text("由你确认后，Crab 会在应用内下载、校验并安装。", "When you confirm, Crab downloads, verifies, and installs the update in app.")
         case .unavailable:
             CrabL10n.text("正式发布时配置更新源后即可在这里检查。", "Configure a release feed to enable in-app update checks.")
         case .failed:
@@ -265,7 +297,10 @@ struct CrabSettingsView: View {
     }
 
     private var updateStatusIcon: String {
-        switch settings.updateState {
+        if case .failed = settings.updateActionState {
+            return "exclamationmark.triangle.fill"
+        }
+        return switch settings.updateState {
         case .upToDate: "checkmark.circle.fill"
         case .available: "arrow.down.circle.fill"
         case .failed: "exclamationmark.triangle.fill"
@@ -275,11 +310,42 @@ struct CrabSettingsView: View {
     }
 
     private var updateStatusColor: Color {
-        switch settings.updateState {
+        if case .failed = settings.updateActionState {
+            return .orange
+        }
+        return switch settings.updateState {
         case .upToDate: .green
         case .available: .crabPurple
         case .failed: .orange
         case .idle, .checking, .unavailable: .secondary
+        }
+    }
+
+    private var isUpdateBusy: Bool {
+        settings.updateState == .checking || settings.updateActionState.isBusy
+    }
+
+    private var updateButtonTitle: String {
+        switch settings.updateActionState {
+        case .downloading: CrabL10n.text("正在下载", "Downloading")
+        case .installing: CrabL10n.text("正在安装", "Installing")
+        case .relaunching: CrabL10n.text("正在重启", "Restarting")
+        case .failed:
+            CrabL10n.text("重试安装", "Retry Install")
+        case .idle:
+            if case .available = settings.updateState {
+                CrabL10n.text("下载并安装", "Download and Install")
+            } else {
+                CrabL10n.text("检查更新", "Check for Updates")
+            }
+        }
+    }
+
+    private func performUpdateAction() {
+        if case .available = settings.updateState {
+            settings.installAvailableUpdate()
+        } else {
+            settings.checkForUpdates()
         }
     }
 
