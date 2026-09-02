@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "dev.crab.cursor.cache.v1",
+  "appID": "com.todesktop.230313mzl4w4u92",
+  "category": "regenerable-cache",
+  "risk": "A",
+  "leaf": "Library/Caches/com.todesktop.230313mzl4w4u92",
+  "requiresAppStopped": true,
+  "action": "trash",
+  "explanation": "Cursor 可重新生成的本地缓存。",
+  "impact": "再次使用 Cursor 时可能重新下载资源。",
+  "recovery": "清空废纸篓前可恢复。"
+}

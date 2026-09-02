@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "dev.crab.ollama.ui-cache.v1",
+  "appID": "com.electron.ollama",
+  "category": "regenerable-cache",
+  "risk": "A",
+  "leaf": "Library/Caches/com.electron.ollama",
+  "requiresAppStopped": true,
+  "action": "trash",
+  "explanation": "Ollama 桌面应用可重新生成的界面缓存。",
+  "impact": "再次使用 Ollama 时可能重新构建界面资源；本地模型不会受影响。",
+  "recovery": "清空废纸篓前可恢复。"
+}

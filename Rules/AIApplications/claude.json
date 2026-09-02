@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "dev.crab.claude.cache.v1",
+  "appID": "com.anthropic.claudefordesktop",
+  "category": "regenerable-cache",
+  "risk": "A",
+  "leaf": "Library/Caches/com.anthropic.claudefordesktop",
+  "requiresAppStopped": true,
+  "action": "trash",
+  "explanation": "Claude 可重新生成的本地缓存。",
+  "impact": "再次使用 Claude 时可能重新下载资源。",
+  "recovery": "清空废纸篓前可恢复。"
+}

@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "dev.crab.zed.cache.v1",
+  "appID": "dev.zed.Zed",
+  "category": "regenerable-cache",
+  "risk": "A",
+  "leaf": "Library/Caches/Zed",
+  "requiresAppStopped": true,
+  "action": "trash",
+  "explanation": "Zed 可重新生成的本地缓存。",
+  "impact": "再次使用 Zed 时可能重新构建临时资源。",
+  "recovery": "清空废纸篓前可恢复。"
+}

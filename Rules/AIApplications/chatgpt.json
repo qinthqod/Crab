@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "dev.crab.chatgpt.cache.v1",
+  "appID": "com.openai.chat",
+  "category": "regenerable-cache",
+  "risk": "A",
+  "leaf": "Library/Caches/com.openai.chat",
+  "requiresAppStopped": true,
+  "action": "trash",
+  "explanation": "ChatGPT 可重新生成的本地缓存。",
+  "impact": "再次使用 ChatGPT 时可能重新下载资源。",
+  "recovery": "清空废纸篓前可恢复。"
+}

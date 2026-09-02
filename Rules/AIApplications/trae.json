@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "dev.crab.trae.cache.v1",
+  "appID": "cn.trae.app",
+  "category": "regenerable-cache",
+  "risk": "A",
+  "leaf": "Library/Caches/cn.trae.app",
+  "requiresAppStopped": true,
+  "action": "trash",
+  "explanation": "TRAE 可重新生成的本地缓存。",
+  "impact": "再次使用 TRAE 时可能重新下载资源。",
+  "recovery": "清空废纸篓前可恢复。"
+}

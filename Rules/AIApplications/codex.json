@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "dev.crab.codex.cache.v1",
+  "appID": "com.openai.codex",
+  "category": "regenerable-cache",
+  "risk": "A",
+  "leaf": "Library/Caches/com.openai.codex",
+  "requiresAppStopped": true,
+  "action": "trash",
+  "explanation": "Codex 可重新生成的本地缓存。",
+  "impact": "再次使用 Codex 时可能重新下载资源。",
+  "recovery": "清空废纸篓前可恢复。"
+}

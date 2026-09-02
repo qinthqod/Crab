@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "dev.crab.doubao-work.cache.v1",
+  "appID": "com.work.pc.doubao",
+  "category": "regenerable-cache",
+  "risk": "A",
+  "leaf": "Library/Caches/DoubaoWork",
+  "requiresAppStopped": true,
+  "action": "trash",
+  "explanation": "豆包工作版可重新生成的本地缓存。",
+  "impact": "再次使用豆包工作版时可能重新下载资源。",
+  "recovery": "清空废纸篓前可恢复。"
+}

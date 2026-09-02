@@ -1,0 +1,39 @@
+# Copy this file to .github/workflows/ci.yml after authorizing GitHub Actions
+# workflow changes for the repository.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Swift version
+        run: swift --version
+      - name: Run core tests
+        run: swift run crab-core-tests
+      - name: Build release products
+        run: swift build -c release
+      - name: Check dangerous API boundaries
+        run: bash scripts/check-dangerous-apis.sh
+      - name: Build app bundle
+        run: bash scripts/build-app-bundle.sh
+      - name: Verify app bundle signature
+        run: codesign --verify --deep --strict build/Crab.app
+      - name: Install prototype dependencies without scripts
+        working-directory: prototype
+        run: npm ci --ignore-scripts
+      - name: Audit prototype dependencies
+        working-directory: prototype
+        run: npm audit --omit=dev
+      - name: Build and test design prototype
+        working-directory: prototype
+        run: npm run build && npm run test:sites

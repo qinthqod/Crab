@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "dev.crab.fixture.cache.v1",
+  "appID": "crab-fixture",
+  "category": "regenerable-cache",
+  "risk": "A",
+  "leaf": "Library/Caches/CrabFixture/Cache",
+  "requiresAppStopped": true,
+  "action": "trash",
+  "explanation": "A local fixture cache used to verify Crab's read-only scanner.",
+  "impact": "The fixture can recreate this test data.",
+  "recovery": "No cleanup action exists in this development slice."
+}

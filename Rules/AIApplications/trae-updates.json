@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "dev.crab.trae.updates.v1",
+  "appID": "cn.trae.app",
+  "category": "regenerable-cache",
+  "risk": "A",
+  "leaf": "Library/Caches/cn.trae.app.ShipIt",
+  "requiresAppStopped": true,
+  "action": "trash",
+  "explanation": "TRAE 已下载的更新缓存。",
+  "impact": "需要更新时可能重新下载安装资源。",
+  "recovery": "清空废纸篓前可恢复。"
+}

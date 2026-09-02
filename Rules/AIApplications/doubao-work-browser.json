@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "dev.crab.doubao-work.browser-cache.v1",
+  "appID": "com.work.pc.doubao",
+  "category": "regenerable-cache",
+  "risk": "A",
+  "leaf": "Library/Caches/com.work.pc.doubao.browser",
+  "requiresAppStopped": true,
+  "action": "trash",
+  "explanation": "豆包工作版网页组件缓存。",
+  "impact": "再次使用豆包工作版时可能重建网页资源。",
+  "recovery": "清空废纸篓前可恢复。"
+}
