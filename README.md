@@ -2,6 +2,10 @@
 
 **断舍离 · Stable Cleaning**
 
+<p align="center">
+  <img src="docs/images/crab-readme-hero.png" alt="Crab organizing AI application storage in a calm lavender ocean" width="100%">
+</p>
+
 Crab is an open-source macOS utility focused on one job: safely cleaning and
 managing storage created by AI applications and coding harnesses.
 
@@ -43,6 +47,19 @@ Current rules cover installed products such as ChatGPT, Claude/Claude Code,
 Cursor, Codex, DeepSeek Harness, Windsurf, TRAE, Zed, Ollama, and 豆包 variants.
 Products without a reviewed cache leaf are shown as protected rather than silently
 omitted.
+
+<table>
+  <tr>
+    <th>Cache Cleanup / 缓存清理</th>
+    <th>Application Management / 应用管理</th>
+    <th>Project Cleanup / 项目清理</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/crab-cache-cleanup.png" alt="Crab safely organizing regenerable cache blocks"></td>
+    <td><img src="docs/images/crab-app-management.png" alt="Crab reviewing AI application activity and storage"></td>
+    <td><img src="docs/images/crab-project-cleanup.png" alt="Crab organizing projects by age and size"></td>
+  </tr>
+</table>
 
 ## Safety contract / 安全边界
 
