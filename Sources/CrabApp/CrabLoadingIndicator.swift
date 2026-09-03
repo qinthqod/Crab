@@ -98,6 +98,7 @@ private struct CrabMascotArtwork: View {
     }
 }
 
+@MainActor
 private enum CrabMascotImage {
     static let image: NSImage? = {
         guard let url = Bundle.main.url(forResource: "crab-loading-mascot", withExtension: "png") else {
