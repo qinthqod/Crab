@@ -15,7 +15,10 @@ struct MainView: View {
                     if model.mode == .cache {
                         switch model.state {
                         case .idle:
-                            ScanHomeView(onScan: model.scanUserCaches)
+                            ScanHomeView(
+                                lastScan: model.lastCacheScan,
+                                onScan: model.scanUserCaches
+                            )
                         case .loading:
                             ScanLoadingView()
                         case .ready:

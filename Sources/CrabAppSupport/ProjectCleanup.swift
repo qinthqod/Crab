@@ -21,6 +21,65 @@ public enum ProjectCleanupLabelPolicy {
     }
 }
 
+public enum ProjectCleanupFilter: String, CaseIterable, Sendable {
+    case all
+    case inactive
+    case large
+    case recent
+}
+
+public enum ProjectCleanupSort: String, CaseIterable, Sendable {
+    case recentActivity
+    case oldestActivity
+    case sizeDescending
+}
+
+public enum ProjectCleanupPresentation {
+    public static func projects(
+        _ projects: [ProjectInventoryItem],
+        query: String,
+        filter: ProjectCleanupFilter,
+        sort: ProjectCleanupSort
+    ) -> [ProjectInventoryItem] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return projects
+            .filter { project in
+                normalizedQuery.isEmpty
+                    || project.path.lastPathComponent.localizedCaseInsensitiveContains(normalizedQuery)
+                    || project.path.path.localizedCaseInsensitiveContains(normalizedQuery)
+            }
+            .filter { project in
+                switch filter {
+                case .all: true
+                case .inactive: project.isInactive
+                case .large:
+                    ProjectCleanupLabelPolicy.labels(
+                        isInactive: project.isInactive,
+                        logicalBytes: project.logicalBytes
+                    ).contains(.large)
+                case .recent: !project.isInactive
+                }
+            }
+            .sorted { left, right in
+                switch sort {
+                case .recentActivity:
+                    if left.latestActivity != right.latestActivity {
+                        return left.latestActivity > right.latestActivity
+                    }
+                case .oldestActivity:
+                    if left.latestActivity != right.latestActivity {
+                        return left.latestActivity < right.latestActivity
+                    }
+                case .sizeDescending:
+                    if left.logicalBytes != right.logicalBytes {
+                        return left.logicalBytes > right.logicalBytes
+                    }
+                }
+                return left.path.path.localizedStandardCompare(right.path.path) == .orderedAscending
+            }
+    }
+}
+
 public struct ProjectCleanupSelection: Equatable, Sendable {
     public let inventory: ProjectInventoryResult
     public private(set) var selectedProjectIDs: Set<URL>

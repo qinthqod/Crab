@@ -1,7 +1,9 @@
 import AppKit
+import CrabAppSupport
 import SwiftUI
 
 struct ScanHomeView: View {
+    let lastScan: CacheScanHistorySummary?
     let onScan: () -> Void
 
     var body: some View {
@@ -30,14 +32,61 @@ struct ScanHomeView: View {
             }
 
             Button(action: onScan) {
-                Label("开始扫描", systemImage: "magnifyingglass")
+                Label(
+                    lastScan == nil
+                        ? CrabL10n.text("开始扫描", "Start Scan")
+                        : CrabL10n.text("再次扫描", "Scan Again"),
+                    systemImage: "magnifyingglass"
+                )
             }
             .buttonStyle(CrabPrimaryButtonStyle())
             .frame(width: 320)
             .padding(.top, 32)
+
+            if let lastScan {
+                HStack(spacing: 18) {
+                    homeMetric(
+                        title: CrabL10n.text("上次扫描", "Last Scan"),
+                        value: lastScan.scannedAt.formatted(date: .abbreviated, time: .shortened)
+                    )
+                    Divider().frame(height: 28)
+                    homeMetric(
+                        title: CrabL10n.text("发现缓存", "Cache Found"),
+                        value: ByteCountFormatter.string(
+                            fromByteCount: Int64(lastScan.discoveredBytes),
+                            countStyle: .file
+                        )
+                    )
+                    Divider().frame(height: 28)
+                    homeMetric(
+                        title: CrabL10n.text("已安装应用", "Installed Apps"),
+                        value: lastScan.installedAppCount.formatted()
+                    )
+                }
+                .padding(.horizontal, 18)
+                .frame(height: 62)
+                .background(Color.white.opacity(0.62), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .stroke(Color.crabPurple.opacity(0.1))
+                }
+                .padding(.top, 18)
+            }
         }
         .padding(.bottom, 40)
         .accessibilityElement(children: .contain)
+    }
+
+    private func homeMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.crabInk)
+                .lineLimit(1)
+        }
     }
 }
 

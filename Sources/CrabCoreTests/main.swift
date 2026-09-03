@@ -513,6 +513,37 @@ private let tests: [(String, () throws -> Void)] = [
             try expect(snapshot.selectedBytes == 0, "An empty selection must report zero selected bytes")
         }
     }),
+    ("Cache space summary separates immediately available and running-app cache", {
+        try withTemporaryHome { home in
+            let available = try makeScannedCandidate(in: home)
+            let blockedRuleData = validRuleData()
+                .replacingUTF8("dev.crab.fixture.cache.v1", with: "dev.crab.fixture.cache.running.v1")
+                .replacingUTF8("Library/Caches/CrabFixture/Cache", with: "Library/Caches/CrabFixture/Running")
+            let blockedRule = try RuleValidator.decode(data: blockedRuleData)
+            let blockedCache = home.appendingPathComponent(blockedRule.leaf, isDirectory: true)
+            try FileManager.default.createDirectory(at: blockedCache, withIntermediateDirectories: true)
+            try Data([4, 5, 6, 7, 8]).write(to: blockedCache.appendingPathComponent("running.bin"))
+            let blocked = try SafeScanner().scan(rule: blockedRule, homeURL: home)
+
+            let summary = CacheActionableSpaceSummary(
+                candidates: [available, blocked],
+                blockedRuleIDs: [blocked.rule.id]
+            )
+
+            try expect(
+                summary.discoveredBytes == available.logicalBytes + blocked.logicalBytes,
+                "Discovered bytes must include every verified cache"
+            )
+            try expect(
+                summary.availableNowBytes == available.logicalBytes,
+                "Available-now bytes must exclude running applications"
+            )
+            try expect(
+                summary.blockedByRunningAppsBytes == blocked.logicalBytes,
+                "Running application bytes must be reported separately"
+            )
+        }
+    }),
     ("App scan snapshot selects only an explicit item", {
         try withTemporaryHome { home in
             let candidate = try makeScannedCandidate(in: home)
@@ -1780,6 +1811,33 @@ private let tests: [(String, () throws -> Void)] = [
             try expect((claude?.logicalBytes ?? 0) >= 4_096, "Project size must use metadata without reading file contents")
             let codex = result.projects.first { $0.primaryAppID == "com.openai.codex" }
             try expect(codex?.isInactive == false, "Recently modified projects must remain active")
+            try expect(
+                ProjectCleanupPresentation.projects(
+                    result.projects,
+                    query: "claudefixture",
+                    filter: .all,
+                    sort: .recentActivity
+                ).map(\.path) == [claudeProject.standardizedFileURL],
+                "Project search must be case-insensitive and match project names"
+            )
+            try expect(
+                ProjectCleanupPresentation.projects(
+                    result.projects,
+                    query: "",
+                    filter: .inactive,
+                    sort: .recentActivity
+                ).map(\.path) == [claudeProject.standardizedFileURL],
+                "The inactive filter must contain only six-month projects"
+            )
+            try expect(
+                ProjectCleanupPresentation.projects(
+                    result.projects,
+                    query: "",
+                    filter: .recent,
+                    sort: .sizeDescending
+                ).map(\.path) == [codexProject.standardizedFileURL],
+                "The recent filter must exclude six-month projects"
+            )
         }
     }),
     ("Project application groups start collapsed and expand independently", {

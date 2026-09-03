@@ -1,5 +1,8 @@
 "断舍离" = "Declutter";
 "开始扫描" = "Start Scan";
+"再次扫描" = "Scan Again";
+"上次扫描" = "Last Scan";
+"已安装应用" = "Installed Apps";
 "正在扫描 AI 缓存…" = "Scanning AI caches…";
 "正在检查受支持 AI 工具的缓存目录" = "Checking cache folders for supported AI tools";
 "只读取文件大小与元数据" = "Reads only file size and metadata";
@@ -11,6 +14,12 @@
 "缓存清理" = "Cache Cleanup";
 "应用管理" = "App Management";
 "项目清理" = "Project Cleanup";
+"搜索项目名称或路径" = "Search project name or path";
+"筛选" = "Filter";
+"排序" = "Sort";
+"没有匹配的项目" = "No Matching Projects";
+"更改搜索词或筛选条件后再试。" = "Try another search or filter.";
+"清除筛选" = "Clear Filters";
 "功能" = "Features";
 "处理结果" = "Result";
 "完成" = "Done";
@@ -22,6 +31,9 @@
 "全部选择" = "Select All";
 "选择或取消选择当前分类中的可用缓存项" = "Select or deselect available caches in the current category";
 "可释放空间" = "Reclaimable Space";
+"当前可清理" = "Available Now";
+"发现缓存" = "Cache Found";
+"退出应用后可清理" = "Available After Quitting";
 "应用分类" = "App Categories";
 "保护状态" = "Protection";
 "安全可清理" = "Safe to Clean";
@@ -58,6 +70,7 @@
 "操作" = "Actions";
 "正在运行" = "Running";
 "命令行工具" = "Command-line Tool";
+"查看安装位置" = "Reveal Location";
 "计算中" = "Calculating";
 "应用与缓存" = "App and Cache";
 "应用本体" = "App Only";

@@ -85,10 +85,10 @@ struct ScanResultView: View {
 
     private var summaryRail: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Label("可释放空间", systemImage: "internaldrive")
+            Label("当前可清理", systemImage: "internaldrive")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text(formattedTotal)
+            Text(formattedAvailableNow)
                 .font(.system(size: 28, weight: .bold, design: .rounded))
                 .tracking(-0.6)
                 .foregroundStyle(Color.crabPurple)
@@ -98,6 +98,20 @@ struct ScanResultView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
+
+            VStack(spacing: 8) {
+                spaceSummaryRow(
+                    title: CrabL10n.text("发现缓存", "Cache Found"),
+                    value: formattedDiscovered
+                )
+                if model.cacheSpaceSummary.blockedByRunningAppsBytes > 0 {
+                    spaceSummaryRow(
+                        title: CrabL10n.text("退出应用后可清理", "Available After Quitting"),
+                        value: formattedBlocked
+                    )
+                }
+            }
+            .padding(.top, 14)
 
             Divider().padding(.vertical, 17)
 
@@ -140,6 +154,18 @@ struct ScanResultView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color.crabPurple.opacity(0.12))
+        }
+    }
+
+    private func spaceSummaryRow(title: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            Text(value)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.crabInk)
         }
     }
 
@@ -308,8 +334,20 @@ struct ScanResultView: View {
         .padding(.bottom, 50)
     }
 
-    private var formattedTotal: String {
-        ByteCountFormatter.string(fromByteCount: Int64(model.snapshot.totalBytes), countStyle: .file)
+    private var formattedDiscovered: String {
+        formattedBytes(model.cacheSpaceSummary.discoveredBytes)
+    }
+
+    private var formattedAvailableNow: String {
+        formattedBytes(model.cacheSpaceSummary.availableNowBytes)
+    }
+
+    private var formattedBlocked: String {
+        formattedBytes(model.cacheSpaceSummary.blockedByRunningAppsBytes)
+    }
+
+    private func formattedBytes(_ bytes: UInt64) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
     private var selectedSize: String {

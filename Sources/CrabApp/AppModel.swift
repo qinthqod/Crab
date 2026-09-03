@@ -134,6 +134,7 @@ final class AppModel: ObservableObject {
 
     @Published private var cacheWorkflow = CacheWorkflowState()
     @Published private(set) var scanOverview = AppScanOverview()
+    @Published private(set) var lastCacheScan: CacheScanHistorySummary?
     @Published private(set) var harnessInventory = HarnessInventory()
     @Published private(set) var harnessUsageByAppID: [String: HarnessUsageSummary] = [:]
     @Published private(set) var inventoryState: InventoryState = .idle
@@ -167,6 +168,19 @@ final class AppModel: ObservableObject {
     var state: ScanState { cacheWorkflow.phase }
     var snapshot: AppScanSnapshot { cacheWorkflow.snapshot }
     var scanIssueCount: Int { cacheWorkflow.issueCount }
+
+    var cacheSpaceSummary: CacheActionableSpaceSummary {
+        let runningAppIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        let blockedRuleIDs = Set(snapshot.candidates.lazy.compactMap { candidate in
+            candidate.rule.requiresAppStopped && runningAppIDs.contains(candidate.rule.appID)
+                ? candidate.rule.id
+                : nil
+        })
+        return CacheActionableSpaceSummary(
+            candidates: snapshot.candidates,
+            blockedRuleIDs: blockedRuleIDs
+        )
+    }
 
     var detectedAppCount: Int {
         scanOverview.productsWithCacheCount
@@ -239,6 +253,11 @@ final class AppModel: ObservableObject {
                 cacheWorkflow.finish(
                     snapshot: AppScanSnapshot(candidates: result.candidates),
                     issueCount: result.issues.count
+                )
+                lastCacheScan = CacheScanHistorySummary(
+                    scannedAt: Date(),
+                    discoveredBytes: result.candidates.reduce(0) { $0 + $1.logicalBytes },
+                    installedAppCount: inventory.installations.count
                 )
             case let .failure(message):
                 loadedRules = []
@@ -659,6 +678,10 @@ final class AppModel: ObservableObject {
 
     func isHarnessRunning(_ installation: HarnessInstallation) -> Bool {
         SystemApplicationActivityChecker().isApplicationRunning(bundleIdentifier: installation.appID)
+    }
+
+    func revealHarnessInstallation(_ installation: HarnessInstallation) {
+        NSWorkspace.shared.activateFileViewerSelecting([installation.bundleURL])
     }
 
     func uninstallHarness(_ installation: HarnessInstallation) {

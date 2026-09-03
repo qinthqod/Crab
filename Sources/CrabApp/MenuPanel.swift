@@ -99,7 +99,7 @@ struct MenuPanel: View {
         case .idle: return CrabL10n.text("Crab 已在菜单栏待命", "Crab is ready in the menu bar")
         case .loading: return CrabL10n.text("正在扫描 AI 缓存", "Scanning AI caches")
         case .ready:
-            if model.snapshot.totalBytes == 0 {
+            if model.cacheSpaceSummary.discoveredBytes == 0 {
                 return CrabL10n.format(
                     "已检查 %d 个应用，未发现缓存",
                     "Checked %d apps; no cache found",
@@ -107,10 +107,16 @@ struct MenuPanel: View {
                 )
             }
             let size = ByteCountFormatter.string(
-                fromByteCount: Int64(model.snapshot.totalBytes),
+                fromByteCount: Int64(model.cacheSpaceSummary.availableNowBytes),
                 countStyle: .file
             )
-            return CrabL10n.format("发现 %@ 可审阅缓存", "%@ of cache to review", size)
+            if model.cacheSpaceSummary.availableNowBytes == 0 {
+                return CrabL10n.text(
+                    "发现缓存，退出相关应用后可清理",
+                    "Cache found; quit related apps to clean"
+                )
+            }
+            return CrabL10n.format("当前可清理 %@", "%@ available to clean now", size)
         case .failed: return CrabL10n.text("上次扫描未完成", "The last scan did not complete")
         }
     }

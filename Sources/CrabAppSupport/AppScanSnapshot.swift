@@ -1,6 +1,32 @@
 import CrabCore
 import Foundation
 
+public struct CacheActionableSpaceSummary: Equatable, Sendable {
+    public let discoveredBytes: UInt64
+    public let availableNowBytes: UInt64
+    public let blockedByRunningAppsBytes: UInt64
+
+    public init(candidates: [ScanCandidate], blockedRuleIDs: Set<RuleID>) {
+        discoveredBytes = candidates.reduce(0) { $0 + $1.logicalBytes }
+        blockedByRunningAppsBytes = candidates
+            .filter { blockedRuleIDs.contains($0.rule.id) }
+            .reduce(0) { $0 + $1.logicalBytes }
+        availableNowBytes = discoveredBytes - blockedByRunningAppsBytes
+    }
+}
+
+public struct CacheScanHistorySummary: Equatable, Sendable {
+    public let scannedAt: Date
+    public let discoveredBytes: UInt64
+    public let installedAppCount: Int
+
+    public init(scannedAt: Date, discoveredBytes: UInt64, installedAppCount: Int) {
+        self.scannedAt = scannedAt
+        self.discoveredBytes = discoveredBytes
+        self.installedAppCount = installedAppCount
+    }
+}
+
 public struct AppScanSnapshot: Equatable, Sendable {
     public let candidates: [ScanCandidate]
     public private(set) var selectedRuleIDs: Set<RuleID>

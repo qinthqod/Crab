@@ -7,6 +7,9 @@ struct ArchiveReminderView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeAlert: ProjectCleanupAlert?
     @State private var disclosureState = ProjectGroupDisclosureState()
+    @State private var searchText = ""
+    @State private var selectedFilter: ProjectCleanupFilter = .all
+    @State private var selectedSort: ProjectCleanupSort = .recentActivity
 
     var body: some View {
         Group {
@@ -156,8 +159,10 @@ struct ArchiveReminderView: View {
     private var resultState: some View {
         VStack(spacing: 0) {
             resultHeader
-            if groupedProjects.isEmpty {
+            if model.projectInventory.projects.isEmpty {
                 emptyState
+            } else if groupedProjects.isEmpty {
+                filteredEmptyState
             } else {
                 ScrollView {
                     LazyVStack(spacing: 14) {
@@ -169,50 +174,93 @@ struct ArchiveReminderView: View {
                     .padding(.bottom, 24)
                 }
             }
-            if !groupedProjects.isEmpty {
+            if !model.projectInventory.projects.isEmpty {
                 projectCleanupBar
             }
         }
     }
 
     private var resultHeader: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("项目清理")
-                    .font(.system(size: 28, weight: .bold))
-                    .tracking(-0.4)
-                    .foregroundStyle(Color.crabInk)
-                Text(CrabL10n.format(
-                    "自动发现 %d 个项目 · %d 个超过 6 个月未使用 · %d 个大项目",
-                    "%d projects found · %d unused for over 6 months · %d large",
-                    model.projectInventory.projects.count,
-                    inactiveProjectCount,
-                    largeProjectCount
-                ))
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if !model.projectInventory.projects.isEmpty {
-                Button(allProjectsAreSelected
-                    ? CrabL10n.text("取消全选", "Deselect All")
-                    : CrabL10n.text("全选项目", "Select All Projects")) {
-                    model.setProjectsSelected(
-                        model.projectInventory.projects,
-                        selected: !allProjectsAreSelected
-                    )
+        VStack(spacing: 14) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("项目清理")
+                        .font(.system(size: 28, weight: .bold))
+                        .tracking(-0.4)
+                        .foregroundStyle(Color.crabInk)
+                    Text(CrabL10n.format(
+                        "自动发现 %d 个项目 · %d 个超过 6 个月未使用 · %d 个大项目",
+                        "%d projects found · %d unused for over 6 months · %d large",
+                        model.projectInventory.projects.count,
+                        inactiveProjectCount,
+                        largeProjectCount
+                    ))
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !model.projectInventory.projects.isEmpty {
+                    Button(allVisibleProjectsAreSelected
+                        ? CrabL10n.text("取消全选", "Deselect All")
+                        : CrabL10n.text("全选当前结果", "Select Visible")) {
+                        model.setProjectsSelected(
+                            visibleProjects,
+                            selected: !allVisibleProjectsAreSelected
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Color.crabPurple)
+                    .disabled(isMovingProjects || visibleProjects.isEmpty)
+                }
+                Button {
+                    model.scanProjects(force: true)
+                } label: {
+                    Label("重新扫描", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.bordered)
                 .tint(Color.crabPurple)
-                .disabled(isMovingProjects)
             }
-            Button {
-                model.scanProjects(force: true)
-            } label: {
-                Label("重新扫描", systemImage: "arrow.clockwise")
+
+            HStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("搜索项目名称或路径", text: $searchText)
+                        .textFieldStyle(.plain)
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(CrabL10n.text("清除搜索", "Clear Search"))
+                    }
+                }
+                .padding(.horizontal, 11)
+                .frame(height: 34)
+                .background(Color.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(Color.black.opacity(0.09))
+                }
+
+                Picker("筛选", selection: $selectedFilter) {
+                    ForEach(ProjectCleanupFilter.allCases, id: \.self) { filter in
+                        Text(filter.title).tag(filter)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 430)
+
+                Picker("排序", selection: $selectedSort) {
+                    ForEach(ProjectCleanupSort.allCases, id: \.self) { sort in
+                        Text(sort.title).tag(sort)
+                    }
+                }
+                .frame(width: 150)
             }
-            .buttonStyle(.bordered)
-            .tint(Color.crabPurple)
         }
         .padding(.horizontal, 32)
         .padding(.top, 8)
@@ -463,15 +511,24 @@ struct ArchiveReminderView: View {
     }
 
     private var groupedProjects: [ProjectGroup] {
-        Dictionary(grouping: model.projectInventory.projects, by: \.primaryAppID)
+        Dictionary(grouping: visibleProjects, by: \.primaryAppID)
             .map { appID, projects in
                 ProjectGroup(
                     appID: appID,
                     displayName: ProjectAssociationCatalog.displayName(for: appID),
-                    projects: projects.sorted { $0.latestActivity > $1.latestActivity }
+                    projects: projects
                 )
             }
             .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+    }
+
+    private var visibleProjects: [ProjectInventoryItem] {
+        ProjectCleanupPresentation.projects(
+            model.projectInventory.projects,
+            query: searchText,
+            filter: selectedFilter,
+            sort: selectedSort
+        )
     }
 
     private var inactiveProjectCount: Int {
@@ -482,8 +539,8 @@ struct ArchiveReminderView: View {
         model.projectInventory.projects.filter(isLargeProject).count
     }
 
-    private var allProjectsAreSelected: Bool {
-        model.allProjectsAreSelected(in: model.projectInventory.projects)
+    private var allVisibleProjectsAreSelected: Bool {
+        model.allProjectsAreSelected(in: visibleProjects)
     }
 
     private var isMovingProjects: Bool {
@@ -508,13 +565,52 @@ struct ArchiveReminderView: View {
             model.projectCleanupSelection.selectedProjects.count,
             selectedSizeText
         )
-        let recentCount = model.projectCleanupSelection.selectedProjects.filter { !$0.isInactive }.count
-        guard recentCount > 0 else { return base }
-        return base + CrabL10n.format(
+        let selectedProjects = model.projectCleanupSelection.selectedProjects
+        let preview = selectedProjects.prefix(4).map { project in
+            let date = project.latestActivity.formatted(date: .abbreviated, time: .omitted)
+            return CrabL10n.format(
+                "\n• %@\n  %@\n  最近活动：%@",
+                "\n• %@\n  %@\n  Last activity: %@",
+                project.path.lastPathComponent,
+                project.path.path,
+                date
+            )
+        }.joined()
+        let remainder = selectedProjects.count > 4
+            ? CrabL10n.format(
+                "\n…以及另外 %d 个项目",
+                "\n…and %d more projects",
+                selectedProjects.count - 4
+            )
+            : ""
+        let recentCount = selectedProjects.filter { !$0.isInactive }.count
+        let recentWarning = recentCount > 0 ? CrabL10n.format(
             " 其中 %d 个项目在最近 6 个月内仍有活动，请确认不再需要。",
             " %d selected projects were active within the last 6 months; confirm they are no longer needed.",
             recentCount
-        )
+        ) : ""
+        return base + recentWarning + preview + remainder
+    }
+
+    private var filteredEmptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.system(size: 44))
+                .foregroundStyle(Color.crabPurple)
+            Text("没有匹配的项目")
+                .font(.system(size: 21, weight: .bold))
+                .foregroundStyle(Color.crabInk)
+            Text("更改搜索词或筛选条件后再试。")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+            Button("清除筛选") {
+                searchText = ""
+                selectedFilter = .all
+            }
+            .buttonStyle(.bordered)
+            .tint(Color.crabPurple)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func isLargeProject(_ project: ProjectInventoryItem) -> Bool {
@@ -552,6 +648,27 @@ struct ArchiveReminderView: View {
             project.fileCount,
             related
         )
+    }
+}
+
+private extension ProjectCleanupFilter {
+    var title: String {
+        switch self {
+        case .all: CrabL10n.text("全部", "All")
+        case .inactive: CrabL10n.text("6 个月未使用", "Inactive 6 Months")
+        case .large: CrabL10n.text("大项目", "Large")
+        case .recent: CrabL10n.text("最近使用", "Recently Used")
+        }
+    }
+}
+
+private extension ProjectCleanupSort {
+    var title: String {
+        switch self {
+        case .recentActivity: CrabL10n.text("最近活动", "Recent Activity")
+        case .oldestActivity: CrabL10n.text("最久未用", "Oldest Activity")
+        case .sizeDescending: CrabL10n.text("大小降序", "Largest First")
+        }
     }
 }
 

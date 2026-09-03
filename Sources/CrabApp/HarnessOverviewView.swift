@@ -110,6 +110,7 @@ struct HarnessOverviewView: View {
                             metadataIsLoading: model.harnessMetadataIsLoading,
                             showsUsageColumn: showsUsageColumn,
                             onOpen: { openApplication(installation) },
+                            onReveal: { model.revealHarnessInstallation(installation) },
                             onUninstall: { pendingUninstall = installation }
                         )
                         if index < orderedInstallations.count - 1 {
@@ -274,6 +275,7 @@ private struct HarnessApplicationRow: View {
     let metadataIsLoading: Bool
     let showsUsageColumn: Bool
     let onOpen: () -> Void
+    let onReveal: () -> Void
     let onUninstall: () -> Void
 
     var body: some View {
@@ -408,13 +410,16 @@ private struct HarnessApplicationRow: View {
                     : CrabL10n.text("仅将应用本体移入废纸篓", "Move only the app to Trash"))
             }
         } else {
-            Label("命令行工具", systemImage: "terminal")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.tertiary)
-                .help(CrabL10n.text(
-                    "命令行工具没有可打开的 App 本体",
-                    "Command-line tools do not have an app to open"
-                ))
+            Button(action: onReveal) {
+                Label("查看安装位置", systemImage: "folder")
+            }
+            .buttonStyle(.bordered)
+            .tint(Color.crabPurple)
+            .controlSize(.small)
+            .help(CrabL10n.text(
+                "在 Finder 中显示已验证的命令行工具包",
+                "Reveal the verified command-line package in Finder"
+            ))
         }
     }
 
