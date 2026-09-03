@@ -15,6 +15,14 @@ Coding Harness 产生的本地存储。
 > Crab 把数据安全置于释放空间之前：不会自动勾选项目，未知数据默认受保护，
 > 只有用户明确选择并确认的内容才会被移入 macOS 废纸篓。
 
+## Download / 下载
+
+[**Download Crab v0.1.1 for Apple Silicon →**](https://github.com/qinthqod/Crab/releases/download/v0.1.1/Crab-0.1.1-macOS-arm64.zip)
+
+下载适用于 Apple Silicon、macOS 14 或更高版本的 Crab。安装前可查看
+[SHA-256 校验文件](https://github.com/qinthqod/Crab/releases/download/v0.1.1/SHA256SUMS.txt)，
+其他版本与发布说明请前往 [GitHub Releases](https://github.com/qinthqod/Crab/releases)。
+
 ## Features / 功能
 
 - **Cache Cleanup / 缓存清理** — scans reviewed, regenerable cache leaves for
@@ -63,7 +71,8 @@ The detailed contracts live in [SPEC-safe-scan.md](SPEC-safe-scan.md),
 
 ## Install the public beta
 
-Download `Crab-0.1.1-macOS-arm64.zip` and `SHA256SUMS.txt` from the latest GitHub Release,
+Download [`Crab-0.1.1-macOS-arm64.zip`](https://github.com/qinthqod/Crab/releases/download/v0.1.1/Crab-0.1.1-macOS-arm64.zip)
+and [`SHA256SUMS.txt`](https://github.com/qinthqod/Crab/releases/download/v0.1.1/SHA256SUMS.txt),
 verify the checksum, unzip it, and move `Crab.app` to Applications.
 
 Version 0.1.1 adds user-confirmed updates inside Crab. Because 0.1.0 did not contain
