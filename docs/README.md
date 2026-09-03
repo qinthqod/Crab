@@ -25,6 +25,7 @@ repository's primary onboarding files.
 - [Archive review snapshot](specs/archive-plan.md)
 - [Localization](specs/localization.md)
 - [Brand assets](specs/brand-assets.md)
+- [DMG distribution](specs/dmg-distribution.md)
 
 ## Research and Security
 

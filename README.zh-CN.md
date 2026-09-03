@@ -16,7 +16,7 @@ Coding Harness 产生的本地存储。
 
 ## 下载
 
-[**下载 Crab v0.1.1 Apple Silicon 版 →**](https://github.com/qinthqod/Crab/releases/download/v0.1.1/Crab-0.1.1-macOS-arm64.zip)
+[**下载 Crab v0.1.1 Apple Silicon 版 →**](https://github.com/qinthqod/Crab/releases/download/v0.1.1/Crab-0.1.1-macOS-arm64.dmg)
 
 Crab 需要 Apple Silicon 与 macOS 14 或更高版本。安装前可下载
 [SHA-256 校验文件](https://github.com/qinthqod/Crab/releases/download/v0.1.1/SHA256SUMS.txt)。
@@ -84,9 +84,10 @@ docs/             产品、工程、安全、研究和技术规格
 
 ## 安装公开测试版
 
-下载 [`Crab-0.1.1-macOS-arm64.zip`](https://github.com/qinthqod/Crab/releases/download/v0.1.1/Crab-0.1.1-macOS-arm64.zip)
+下载 [`Crab-0.1.1-macOS-arm64.dmg`](https://github.com/qinthqod/Crab/releases/download/v0.1.1/Crab-0.1.1-macOS-arm64.dmg)
 和 [`SHA256SUMS.txt`](https://github.com/qinthqod/Crab/releases/download/v0.1.1/SHA256SUMS.txt)，
-验证校验值、解压，然后把 `Crab.app` 移入“应用程序”文件夹。
+验证校验值并打开磁盘映像，然后把 `Crab.app` 拖到“Applications（应用程序）”快捷方式。
+复制完成后推出 Crab 磁盘映像。
 
 v0.1.1 增加了用户确认后的 Crab 应用内更新。由于 v0.1.0 尚未包含安装器，
 从 v0.1.0 升级到 v0.1.1 是最后一次手动更新；之后的兼容版本可从设置页面安装。
@@ -104,7 +105,7 @@ swift run crab-core-tests
 open build/Crab.app
 ```
 
-构建带版本号的 zip 和校验文件：
+构建拖拽安装用 DMG、应用内更新使用的 ZIP，以及两者的校验文件：
 
 ```bash
 ./scripts/package-release.sh

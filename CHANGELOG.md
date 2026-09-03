@@ -3,6 +3,15 @@
 All notable changes to Crab are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+
+- The primary manual installation artifact is now a macOS disk image with a
+  drag-to-Applications flow.
+- The architecture-specific ZIP remains available exclusively for compatible
+  in-app updates, and release checksums now cover both artifacts.
+
 ## [0.1.1] - 2026-09-02
 
 ### Added

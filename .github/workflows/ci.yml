@@ -26,3 +26,7 @@ jobs:
         run: bash scripts/build-app-bundle.sh
       - name: Verify app bundle signature
         run: codesign --verify --deep --strict build/Crab.app
+      - name: Build release packages
+        run: bash scripts/package-release.sh
+      - name: Verify release packages
+        run: bash scripts/test-release-package.sh
