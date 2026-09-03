@@ -24,6 +24,11 @@ download the [SHA-256 checksum](https://github.com/qinthqod/Crab/releases/downlo
 See [GitHub Releases](https://github.com/qinthqod/Crab/releases) for release notes
 and all available versions.
 
+> **First launch on macOS:** this public beta is ad-hoc signed and not Apple
+> notarized. macOS may block the first launch even when the download is intact.
+> Follow the [first-launch steps](#first-launch-on-macos) below after verifying
+> the published SHA-256 checksum.
+
 ## Features
 
 - **Cache Cleanup** — scans reviewed, regenerable cache leaves for installed AI
@@ -111,9 +116,24 @@ Version 0.1.1 adds user-confirmed updates inside Crab. Because 0.1.0 did not con
 the installer, upgrading from 0.1.0 to 0.1.1 is the final manual update. Later
 compatible releases can be installed from Settings.
 
-The beta is ad-hoc signed and is not notarized. macOS may require you to
-Control-click Crab and choose **Open** the first time. Do not bypass security
-warnings for a binary whose checksum does not match the published value.
+### First launch on macOS
+
+The beta is ad-hoc signed and is not notarized. As a result, Gatekeeper may show
+“Apple could not verify Crab is free of malware” on the first launch. This is a
+macOS verification warning, not an application crash.
+
+After verifying that the downloaded file matches the published SHA-256 checksum:
+
+1. Drag `Crab.app` from the disk image into `Applications`.
+2. Try to open Crab once. If macOS blocks it, choose **Done**.
+3. Open **System Settings → Privacy & Security**.
+4. In the Security section, find the message that Crab was blocked and choose
+   **Open Anyway**.
+5. Confirm **Open**. Later launches should open normally.
+
+On some macOS versions, you can instead Control-click Crab in Applications,
+choose **Open**, and then confirm **Open**. Do not continue if the checksum does
+not match the value published in the official Crab release.
 
 ## Build from Source
 
