@@ -19,8 +19,8 @@
 
 Build order: `rule-contract` → `safe-scan` → `cache-app-catalog`; `harness-inventory` → `project-inventory` → `project-attribution` → `archive-trash-execution`; then `mac-app` and `brand-assets`; finally `audit-restore`.
 
-Project Cleanup starts with zero selection. Recent projects are view-only; inactive projects require explicit selection, a second confirmation, fresh metadata evidence, and immediate identity revalidation before Trash.
+Project Cleanup starts with zero selection. Every project requires explicit selection, a second confirmation, fresh metadata evidence, and immediate identity revalidation before Trash. Recent and large-project signals are informational labels only.
 
 The native application now covers `rule-contract`, `safe-scan`, `immutable-plan`, `trash-execution`, and `mac-app`. The immutable plan remains an internal safety boundary; the UI exposes only review, explicit selection, confirmation, and Move to Trash. Permanent deletion and automatic selection remain structurally unavailable.
 
-Crab never discovers or inspects cloud conversation databases. Generic generated-content suggestions remain read-only. Only local project roots attributed through explicit AI markers and project boundaries can enter project cleanup; home, Library, system, application, Trash, cloud-sync, linked, recent, changed, and arbitrary paths remain ineligible.
+Crab never discovers or inspects cloud conversation databases. Generic generated-content suggestions remain read-only. Only local project roots attributed through explicit AI markers and project boundaries can enter project cleanup; home, Library, system, application, Trash, cloud-sync, linked, changed, and arbitrary paths remain ineligible.

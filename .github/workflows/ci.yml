@@ -1,5 +1,3 @@
-# Copy this file to .github/workflows/ci.yml after authorizing GitHub Actions
-# workflow changes for the repository.
 name: CI
 
 on:
@@ -28,12 +26,3 @@ jobs:
         run: bash scripts/build-app-bundle.sh
       - name: Verify app bundle signature
         run: codesign --verify --deep --strict build/Crab.app
-      - name: Install prototype dependencies without scripts
-        working-directory: prototype
-        run: npm ci --ignore-scripts
-      - name: Audit prototype dependencies
-        working-directory: prototype
-        run: npm audit --omit=dev
-      - name: Build and test design prototype
-        working-directory: prototype
-        run: npm run build && npm run test:sites

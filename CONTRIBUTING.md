@@ -31,6 +31,6 @@ Keep changes focused, explain the user-visible outcome, and call out any change 
 the Trash, process-execution, update, or permission boundaries. By contributing,
 you agree that your contribution is licensed under the MIT License.
 
-The release checks are also provided as [`docs/ci.yml`](docs/ci.yml). Repository
-maintainers can enable it by copying it to `.github/workflows/ci.yml` after granting
-their GitHub credentials permission to manage workflow files.
+The same release checks run automatically through
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) on every pull request and
+push to `main`.

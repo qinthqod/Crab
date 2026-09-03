@@ -12,8 +12,8 @@ Replace the macOS application icon with the approved coral crab mascot centered 
 
 ## Project Structure and Style
 
-- Source mascot: `prototype/public/assets/crab-loading-mascot.png`.
-- New square icon source: `prototype/public/assets/crab-app-icon.png`.
+- Source mascot: `Assets/Brand/crab-loading-mascot.png`.
+- Square icon source: `Assets/Brand/crab-app-icon.png`.
 - Generated `.icns` remains build output.
 - Background: pale lavender matching `Color.crabLavender`; mascot remains coral and optically centered with safe margins.
 

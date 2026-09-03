@@ -25,7 +25,7 @@ Build order: `harness-catalog` → `harness-inventory` → `harness-overview` �
 - Last opened time comes from public Spotlight metadata and may truthfully be unavailable.
 - Project totals come from Crab's metadata-only project inventory and are attributed to the matching installed application.
 - Conversation totals count only known session record files in a product's public local session directory. Crab does not open those records or read prompts and responses.
-- Token totals may come only from an explicit vendor-provided aggregate file or official API. They are never inferred from conversation content. When no trustworthy aggregate is available, the UI shows an em dash.
+- Token totals may come only from an explicit vendor-provided aggregate file or official API. They are never inferred from conversation content. When no trustworthy aggregate is available, the metric is hidden.
 - Uninstall requires explicit confirmation and moves only the revalidated application bundle to Trash.
 - Uninstall itself never removes caches, Application Support, preferences, chats, projects, generated files, models, credentials, account data, or Crab scan history.
 - After the application bundle reaches Trash, Crab may scan only reviewed exact residual leaves associated with that application's bundle identifier and catalog entry.
@@ -67,7 +67,7 @@ Build order: `harness-catalog` → `harness-inventory` → `harness-overview` �
 
 - Unsupported or uninstalled Harness products do not appear in cache results or Harness management.
 - Installed Harness products show truthful metadata and local disk usage.
-- Supported installed products show truthful project and conversation counts; unavailable Token totals are shown as unavailable.
+- Supported installed products show truthful project and conversation counts; unavailable Token totals are hidden.
 - Uninstalling moves only the `.app` bundle. Associated data remains untouched unless the user separately selects reviewed residual leaves and confirms moving them to Trash.
-- Unknown Token usage is labeled unavailable rather than estimated.
+- Unknown Token usage is hidden rather than estimated.
 - All tests, builds, safety checks, bundle validation, and signature checks pass.

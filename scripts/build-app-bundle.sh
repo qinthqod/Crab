@@ -7,9 +7,9 @@ APP_BUNDLE="$BUILD_ROOT/Crab.app"
 CONTENTS="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS/MacOS"
 RESOURCES_DIR="$CONTENTS/Resources"
-SOURCE_LOGO="$PROJECT_ROOT/prototype/public/assets/crab-protective-orbit.png"
-SOURCE_APP_ICON="$PROJECT_ROOT/prototype/public/assets/crab-app-icon.png"
-SOURCE_LOADING_MASCOT="$PROJECT_ROOT/prototype/public/assets/crab-loading-mascot.png"
+SOURCE_LOGO="$PROJECT_ROOT/Assets/Brand/crab-protective-orbit.png"
+SOURCE_APP_ICON="$PROJECT_ROOT/Assets/Brand/crab-app-icon.png"
+SOURCE_LOADING_MASCOT="$PROJECT_ROOT/Assets/Brand/crab-loading-mascot.png"
 
 if [[ "$APP_BUNDLE" != "$PROJECT_ROOT/build/Crab.app" ]]; then
     echo "Refusing to replace an unexpected app path: $APP_BUNDLE" >&2

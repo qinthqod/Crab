@@ -58,6 +58,19 @@ silently omitted.
   </tr>
 </table>
 
+## Repository Layout
+
+```text
+Sources/          SwiftUI app, shared safety core, CLI, and test harness
+Rules/            Reviewed product-specific cache rules
+Assets/Brand/     Source artwork bundled with the macOS application
+Fixtures/         Non-production filesystem and rule fixtures
+Packaging/        macOS application metadata
+scripts/          Build, verification, smoke-test, and release scripts
+docs/             Product, engineering, security, research, and specifications
+.github/workflows Continuous integration
+```
+
 ## Safety Contract
 
 - No permanent deletion. Selected items are moved to Trash and remain recoverable
@@ -72,9 +85,10 @@ silently omitted.
 - Photos and Apple Music libraries are excluded from project inventory.
 - No account, telemetry, analytics, upload, or cloud service is required.
 
-The detailed contracts live in [SPEC-safe-scan.md](SPEC-safe-scan.md),
-[SPEC-project-inventory.md](SPEC-project-inventory.md), and
-[SPEC-archive-trash-execution.md](SPEC-archive-trash-execution.md).
+The detailed contracts live in the [documentation index](docs/README.md), including
+the [safe scan](docs/specs/safe-scan.md),
+[project inventory](docs/specs/project-inventory.md), and
+[project Trash execution](docs/specs/archive-trash-execution.md) specifications.
 
 ## Requirements
 
@@ -139,8 +153,8 @@ swift build -c release
 bash scripts/check-dangerous-apis.sh
 ```
 
-The native application is implemented in SwiftUI. The web prototype under
-`prototype/` is a design reference and is not production application code.
+The native application is implemented in SwiftUI. Architecture, product, security,
+and research documents are organized under [`docs/`](docs/README.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before proposing an application rule or a
 change to cleanup behavior. Security issues should follow [SECURITY.md](SECURITY.md).

@@ -19,19 +19,19 @@ Allow only automatically discovered and AI-application-associated local project 
 
 ## Testing Strategy
 
-- Empty and recent-project selections produce no executable project plan.
+- Empty selections produce no executable project plan; recent projects remain selectable but receive an explicit warning.
 - Reject protected roots, cloud-sync roots, AI `sessions` / `file-history` trees, chat databases, links, stale evidence, identity changes, and paths outside the scanned home root.
 - Verify successful execution calls the Trash boundary only for the exact revalidated directory and never permanent deletion.
 - Verify partial failure reports moved, skipped, and failed projects separately.
 
 ## Boundaries
 
-- Always: start with no selection, limit selection to inactive projects, require a visible second confirmation, revalidate immediately before Trash, and provide a plain-language result.
+- Always: start with no selection, warn when recent projects are selected, require a visible second confirmation, revalidate immediately before Trash, and provide a plain-language result.
 - Never: `removeItem`, permanent deletion, overwrite, force, administrator privileges, cloud API deletion, chat-database edits, shell commands, or a reusable arbitrary-path deletion API.
 
 ## Success Criteria
 
 - Project selections cannot be converted to cache `CleanPlan` entries.
-- Only the exact selected and revalidated inactive project directory is passed to `TrashMoving`.
+- Only exact selected and revalidated project directories are passed to `TrashMoving`.
 - Finder reveal remains available without mutation.
 - AI conversations, session history, generated files outside an associated project root, and arbitrary paths never become executable cleanup candidates.

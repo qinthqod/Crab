@@ -831,4 +831,4 @@ PRD 评审通过后，按以下顺序推进：
 
 已完成对开源 Mac 维护工具 Mole 的代码级调研。Crab 采用其经过真实问题验证的安全工程思想，包括统一写操作出口、三态进程检查、删除边界二次复验、固定缓存叶子、链接防护、废纸篓 no-overwrite 移动、硬链接去重和危险路径 fuzz；不采用其通用清理产品范围、Shell 主清理架构、宽泛 glob、sudo、永久删除和任意路径磁盘分析能力。
 
-完整结论见：[Mole 技术调研：Crab 可以借鉴什么](./research/mole-technical-review.md)。
+完整结论见：[Mole 技术调研：Crab 可以借鉴什么](../research/mole-technical-review.md)。

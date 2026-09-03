@@ -24,6 +24,6 @@ conversation content, or other personal data.
 - Cleanup moves items to the macOS Trash. Crab has no permanent-delete operation.
 - Symbolic-link path chains and changed file identities fail closed.
 
-See [SPEC-safe-scan.md](SPEC-safe-scan.md) and
-[SPEC-archive-trash-execution.md](SPEC-archive-trash-execution.md) for the detailed
+See [safe-scan.md](docs/specs/safe-scan.md) and
+[archive-trash-execution.md](docs/specs/archive-trash-execution.md) for the detailed
 contracts.

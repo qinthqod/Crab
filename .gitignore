@@ -17,14 +17,12 @@ xcuserdata/
 *.pem
 *.key
 
-# Prototype dependencies and build output
-prototype/node_modules/
-prototype/dist/
-prototype/implementation-*.png
+# Retired internal planning and prototype workspaces
+tasks/
+prototype/
 
 # Local visual QA notes contain machine-specific paths
 design-qa.md
-prototype/design-qa.md
 
 # Local Crab output
 crab-plan.json

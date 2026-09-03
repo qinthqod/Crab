@@ -11,8 +11,8 @@ Target users are Mac users with several AI tools and developers validating Crab 
 1. MVP deployment target is macOS 14 or newer on Apple Silicon; Intel remains source-compatible but is not a release gate yet.
 2. Swift 6 and Swift Package Manager are the authoritative build system.
 3. The first rule format is strict JSON using `Codable`; YAML and remote rule downloads are out of scope until a dependency and signing review.
-4. The first slice operates only on test fixtures and user-supplied rule files. No unverified real AI application path ships as a stable cleaning rule.
-5. No file-moving or deletion API is implemented in this slice.
+4. No unverified real AI application path ships as a stable cleaning rule.
+5. File mutation is isolated behind the reviewed macOS Trash boundary.
 
 ## Native application
 
@@ -50,9 +50,8 @@ Sources/CrabCore/             Shared models, rule validation, scanner, plan buil
 Sources/crab/                 Dependency-free CLI executable
 Sources/CrabCoreTests/        Unit and filesystem boundary test harness
 Fixtures/Rules/               Non-production example rule fixtures
-tasks/                        Implementation plan and durable task list
 docs/security/                Threat model and security decisions
-prototype/                    Existing web interaction prototype; not production code
+Assets/Brand/                 Source artwork used by the native application bundle
 ```
 
 ## Code Style
@@ -131,9 +130,3 @@ public struct ScanCandidate: Codable, Equatable, Sendable {
 - Empty selection produces an empty plan; no API defaults to selecting candidates.
 - CLI can validate rules, scan, and write a JSON plan without mutating fixture files.
 - `swift run crab-core-tests` and `swift build` pass with no third-party packages.
-
-## Open Questions
-
-- Which two real applications will become the first Stable rules after data-map research?
-- Should the production App target macOS 13 as well as macOS 14?
-- Which open-source license will be selected before the first public commit?

@@ -48,6 +48,19 @@ Windsurf、TRAE、Zed、Ollama 和豆包系列等已安装产品。缺少已审�
   </tr>
 </table>
 
+## 仓库结构
+
+```text
+Sources/          SwiftUI 应用、安全核心、CLI 和测试工具
+Rules/            按产品审核的缓存规则
+Assets/Brand/     macOS 应用打包使用的品牌源文件
+Fixtures/         非生产环境的文件系统与规则测试样例
+Packaging/        macOS 应用元数据
+scripts/          构建、验证、冒烟测试和发布脚本
+docs/             产品、工程、安全、研究和技术规格
+.github/workflows 持续集成
+```
+
 ## 安全边界
 
 - 不永久删除。已选择内容只会移入废纸篓，清空废纸篓前仍可恢复。
@@ -58,9 +71,9 @@ Windsurf、TRAE、Zed、Ollama 和豆包系列等已安装产品。缺少已审�
 - 项目扫描明确排除照片和 Apple Music 资料库。
 - 不需要账户、遥测、分析、上传或云服务。
 
-详细约束见 [SPEC-safe-scan.md](SPEC-safe-scan.md)、
-[SPEC-project-inventory.md](SPEC-project-inventory.md) 和
-[SPEC-archive-trash-execution.md](SPEC-archive-trash-execution.md)。
+详细约束统一收录在[文档索引](docs/README.md)，包括
+[安全扫描](docs/specs/safe-scan.md)、[项目盘点](docs/specs/project-inventory.md)和
+[项目废纸篓执行](docs/specs/archive-trash-execution.md)规格。
 
 ## 系统要求
 
@@ -122,7 +135,8 @@ swift build -c release
 bash scripts/check-dangerous-apis.sh
 ```
 
-原生应用使用 SwiftUI 实现。`prototype/` 下的网页原型仅作为设计参考，并非生产应用代码。
+原生应用使用 SwiftUI 实现。架构、产品、安全和研究资料统一整理在
+[`docs/`](docs/README.md) 下。
 
 提交应用规则或修改清理行为前，请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 安全问题请遵循 [SECURITY.md](SECURITY.md)。
