@@ -14,6 +14,7 @@
 "缓存清理" = "Cache Cleanup";
 "应用管理" = "App Management";
 "项目清理" = "Project Cleanup";
+"运行优化" = "Optimize";
 "搜索项目名称或路径" = "Search project name or path";
 "筛选" = "Filter";
 "排序" = "Sort";
@@ -117,12 +118,30 @@
 "显示 Crab" = "Show Crab";
 "应用管理…" = "App Management…";
 "项目清理…" = "Project Cleanup…";
+"优化运行内存…" = "Optimize Memory…";
 "设置…" = "Settings…";
 "退出 Crab" = "Quit Crab";
 "扫描 AI 缓存…" = "Scan AI Caches…";
 "查看扫描进度" = "View Scan Progress";
 "查看可清理项…" = "Review Cleanable Items…";
 "重新扫描 AI 缓存…" = "Scan AI Caches Again…";
+
+"看清 AI 应用的运行占用，需要时让它们正常退出" = "Review AI app memory use and let selected apps quit normally";
+"刷新" = "Refresh";
+"正在查看 AI 应用的运行占用…" = "Reading AI app memory use…";
+"只读取进程编号、父进程与内存大小" = "Reads only process IDs, parent processes, and memory size";
+"运行中的应用" = "Running Apps";
+"目前没有运行中的 AI 应用" = "No AI Apps Are Running";
+"Crab 只显示本机正在运行且已经支持的 AI 桌面应用。" = "Crab shows only supported AI desktop apps currently running on this Mac.";
+"已选择 %d 个应用" = "%d apps selected";
+"当前约占用 %@" = "Currently using about %@";
+"优化所选应用" = "Optimize Selected Apps";
+"正在优化" = "Optimizing";
+"无法读取运行占用" = "Unable to Read Memory Use";
+"重新读取" = "Reload";
+"运行时长" = "Running For";
+"内存占用" = "Memory";
+"刚刚" = "Just now";
 
 "菜单栏" = "Menu Bar";
 "Crab 运行时始终显示菜单栏图标" = "Always show the menu bar icon while Crab is running";

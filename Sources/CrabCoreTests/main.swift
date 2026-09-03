@@ -2176,6 +2176,124 @@ private let tests: [(String, () throws -> Void)] = [
         try expect(presence.phase == .mainWindow, "Crab must retain normal application presence")
         try expect(presence.isMenuBarVisible, "The menu icon must not depend on a minimization preference")
     }),
+    ("Runtime optimizer accounts for an AI app process tree only", {
+        let snapshot = AIOptimizationSnapshotBuilder().build(
+            applications: [
+                RunningAIApplicationSeed(
+                    appID: "com.openai.chat",
+                    displayName: "ChatGPT",
+                    processIdentifier: 100,
+                    launchedAt: Date(timeIntervalSince1970: 100)
+                ),
+                RunningAIApplicationSeed(
+                    appID: "com.anthropic.claudefordesktop",
+                    displayName: "Claude",
+                    processIdentifier: 200,
+                    launchedAt: Date(timeIntervalSince1970: 200)
+                ),
+            ],
+            processes: [
+                ProcessResourceSample(processIdentifier: 100, parentProcessIdentifier: 1, residentBytes: 200),
+                ProcessResourceSample(processIdentifier: 101, parentProcessIdentifier: 100, residentBytes: 300),
+                ProcessResourceSample(processIdentifier: 102, parentProcessIdentifier: 101, residentBytes: 400),
+                ProcessResourceSample(processIdentifier: 200, parentProcessIdentifier: 1, residentBytes: 500),
+                ProcessResourceSample(processIdentifier: 999, parentProcessIdentifier: 1, residentBytes: 9_999),
+            ]
+        )
+
+        try expect(snapshot.applications.count == 2, "Only the supplied supported AI apps should appear")
+        try expect(snapshot.applications[0].appID == "com.openai.chat", "Apps should sort by process-tree memory")
+        try expect(snapshot.applications[0].residentBytes == 900, "Root and descendant RSS should be summed")
+        try expect(snapshot.totalResidentBytes == 1_400, "Unrelated process memory must be excluded")
+    }),
+    ("Runtime optimizer reads the current process through macOS libproc", {
+        let samples = try SystemProcessResourceSampler().sample()
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        try expect(
+            samples.contains { $0.processIdentifier == ownPID && $0.residentBytes > 0 },
+            "The read-only process sampler should include the current test process"
+        )
+    }),
+    ("Runtime optimization starts with zero selection", {
+        let snapshot = AIOptimizationSnapshot(applications: [
+            RunningAIApplication(
+                appID: "com.openai.chat",
+                displayName: "ChatGPT",
+                processIdentifiers: [100],
+                residentBytes: 512,
+                launchedAt: nil
+            ),
+        ])
+        var selection = AIOptimizationSelection(snapshot: snapshot)
+        try expect(selection.selectedAppIDs.isEmpty, "No running app may be selected automatically")
+        selection.setSelected("unknown.app", selected: true)
+        try expect(selection.selectedAppIDs.isEmpty, "Unknown apps cannot enter optimization selection")
+        selection.setSelected("com.openai.chat", selected: true)
+        try expect(selection.selectedAppIDs == ["com.openai.chat"], "An explicit visible selection should be retained")
+    }),
+    ("Runtime optimization refuses a relaunched process and requests only graceful termination", {
+        let scannedAt = Date(timeIntervalSince1970: 2_000_000_000)
+        let snapshot = AIOptimizationSnapshot(applications: [
+            RunningAIApplication(
+                appID: "com.openai.chat",
+                displayName: "ChatGPT",
+                processIdentifiers: [100],
+                residentBytes: 1_024,
+                launchedAt: nil
+            ),
+            RunningAIApplication(
+                appID: "com.anthropic.claudefordesktop",
+                displayName: "Claude",
+                processIdentifiers: [200],
+                residentBytes: 2_048,
+                launchedAt: nil
+            ),
+        ], capturedAt: scannedAt)
+        let plan = try AIOptimizationPlanBuilder().build(
+            snapshot: snapshot,
+            selectedAppIDs: ["com.openai.chat", "com.anthropic.claudefordesktop"],
+            now: scannedAt
+        )
+        let controller = RecordingAIApplicationTerminator(running: [
+            "com.openai.chat": [101],
+            "com.anthropic.claudefordesktop": [200],
+        ])
+        let receipt = try AIOptimizationExecutor(controller: controller).execute(
+            plan: plan,
+            now: scannedAt.addingTimeInterval(1)
+        )
+
+        try expect(controller.requests == ["com.anthropic.claudefordesktop": [200]], "A changed PID must never receive a termination request")
+        try expect(receipt.requestedAppIDs == ["com.anthropic.claudefordesktop"], "The unchanged app should receive a standard quit request")
+        try expect(receipt.skippedAppIDs == ["com.openai.chat"], "The relaunched app should be reported as skipped")
+        try expect(receipt.estimatedResidentBytes == 2_048, "The receipt may estimate only accepted requests")
+    }),
+    ("Runtime optimization plans expire quickly", {
+        let scannedAt = Date(timeIntervalSince1970: 2_000_000_000)
+        let snapshot = AIOptimizationSnapshot(applications: [
+            RunningAIApplication(
+                appID: "com.openai.chat",
+                displayName: "ChatGPT",
+                processIdentifiers: [100],
+                residentBytes: 512,
+                launchedAt: nil
+            ),
+        ], capturedAt: scannedAt)
+        let plan = try AIOptimizationPlanBuilder().build(
+            snapshot: snapshot,
+            selectedAppIDs: ["com.openai.chat"],
+            now: scannedAt
+        )
+        let controller = RecordingAIApplicationTerminator(running: ["com.openai.chat": [100]])
+
+        try expectThrows("An expired optimizer plan must fail closed") {
+            _ = try AIOptimizationExecutor(controller: controller).execute(
+                plan: plan,
+                now: scannedAt.addingTimeInterval(31)
+            )
+        }
+        try expect(controller.requests.isEmpty, "An expired plan must not request termination")
+    }),
     ("Archive reminder state represents scan and read-only result phases", {
         try withTemporaryHome { home in
             let scannedAt = Date(timeIntervalSince1970: 2_000_000_000)
@@ -2519,6 +2637,24 @@ private final class RecordingApplicationChecker: ApplicationActivityChecking, @u
         defer { lock.unlock() }
         checkedBundleIDs.append(bundleIdentifier)
         return responses.isEmpty ? false : responses.removeFirst()
+    }
+}
+
+private final class RecordingAIApplicationTerminator: AIApplicationTerminationControlling, @unchecked Sendable {
+    private let running: [String: Set<Int32>]
+    private(set) var requests: [String: Set<Int32>] = [:]
+
+    init(running: [String: Set<Int32>]) {
+        self.running = running
+    }
+
+    func runningProcessIdentifiers(for appID: String) -> Set<Int32>? {
+        running[appID]
+    }
+
+    func requestGracefulTermination(appID: String, processIdentifiers: Set<Int32>) -> Bool {
+        requests[appID] = processIdentifiers
+        return true
     }
 }
 

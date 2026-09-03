@@ -403,7 +403,25 @@ action: trash
 - 编程语言包管理器缓存；
 - 普通大文件和 Downloads 扫描；
 - App 卸载与残留清理；
-- 系统优化、监控和健康分；
+- 通用系统优化、监控和健康分；Crab 只提供已支持 AI 桌面应用的按需运行内存审阅与优雅退出。
+
+### 7.1 Runtime Optimizer 补充调研（2026-09-04）
+
+重新核对 Mole Optimizer 页面与仓库提交
+`867270e93c42378b57f9706406845c7fd5a1fe91` 后确认：Mole 的内存部分使用
+`sysctl vm.swapusage`、`memory_pressure` 和进程 RSS 做只读诊断；源码明确说明诊断
+不会终止进程。Mole 的 Optimize 主体是按名称执行的 Finder、DNS、Spotlight、
+LaunchServices 和数据库维护任务，而不是通过 `purge` 或强杀进程制造“已释放内存”。
+
+Crab 不复制这些通用系统维护任务。可借鉴的产品原则是：只在用户打开功能时运行、
+展示明确任务与结果、不确定时跳过、需要变更时重新验证。基于 Crab 的单一 AI 工具
+范围，Runtime Optimization 独立实现为“已支持 AI 桌面应用进程树占用 + 用户选择 +
+二次确认 + 标准退出请求”。它不使用 sudo、永久 helper、`kill -9`、`forceTerminate`
+或文件删除。参考来源：<https://mole.fit/zh/mac-optimizer>、
+<https://mole.fit/mac-optimizer.md>、<https://github.com/tw93/mole>。实现同时以当前
+macOS SDK 的 `libproc.h` / `proc_info.h` 与 Apple `NSRunningApplication.terminate`
+契约为准：`terminate` 只代表标准退出请求已发送，返回时应用不一定已经退出，
+因此 Crab 不把估算占用宣传为已经释放的内存。
 - 任意项目构建产物；
 - 聊天、Memory、凭据、workspace state、项目源码和模型权重的自动清理。
 

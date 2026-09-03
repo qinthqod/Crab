@@ -34,6 +34,14 @@ struct MenuPanel: View {
             } label: {
                 Label("项目清理…", systemImage: "folder.badge.clock")
             }
+
+            Button {
+                model.setMode(.optimizer)
+                model.runtimeOptimizer.refresh(force: true)
+                showMainWindow()
+            } label: {
+                Label("优化运行内存…", systemImage: "memorychip")
+            }
         }
 
         Section {

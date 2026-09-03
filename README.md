@@ -30,6 +30,9 @@ and all available versions.
   desktop and command-line applications.
 - **Application Management** — shows installed and running AI tools, recent use,
   available local usage metrics, and safe app-only uninstall.
+- **Runtime Optimization** — measures the process-tree memory held by running,
+  supported AI desktop apps and sends a normal quit request only after explicit
+  selection and confirmation; it never force-quits.
 - **Project Cleanup** — automatically discovers projects, associates them with AI
   applications, and lets the user move any selected project to Trash after a
   second confirmation.

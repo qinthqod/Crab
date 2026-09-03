@@ -26,6 +26,7 @@ repository's primary onboarding files.
 - [Localization](specs/localization.md)
 - [Brand assets](specs/brand-assets.md)
 - [DMG distribution](specs/dmg-distribution.md)
+- [Runtime optimization](specs/runtime-optimization.md)
 
 ## Research and Security
 

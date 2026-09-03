@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CrabArchive
 import CrabAppSupport
 import CrabCore
@@ -73,6 +74,7 @@ final class AppModel: ObservableObject {
         case cache
         case harness
         case archive
+        case optimizer
 
         var id: Self { self }
 
@@ -81,6 +83,7 @@ final class AppModel: ObservableObject {
             case .cache: CrabL10n.text("缓存清理", "Cache Cleanup")
             case .harness: CrabL10n.text("应用管理", "App Management")
             case .archive: CrabL10n.text("项目清理", "Project Cleanup")
+            case .optimizer: CrabL10n.text("运行优化", "Optimize")
             }
         }
     }
@@ -154,6 +157,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var cleanupState: CleanupState = .idle
     @Published private(set) var mode: Mode = .cache
     @Published private(set) var archiveState = ArchiveReminderState()
+    let runtimeOptimizer = RuntimeOptimizerModel()
 
     private var loadedRules: [AIFileRule] = []
     private var scanGeneration = UUID()
@@ -163,7 +167,14 @@ final class AppModel: ObservableObject {
     private var harnessMetadataTask: Task<Void, Never>?
     private var harnessResidueRules: [HarnessResidueRule] = []
     private var harnessResidueGeneration = UUID()
+    private var cancellables = Set<AnyCancellable>()
     private let projectScanBookmarkKey = "dev.crab.project-scan.home-bookmark.v1"
+
+    init() {
+        runtimeOptimizer.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+    }
 
     var state: ScanState { cacheWorkflow.phase }
     var snapshot: AppScanSnapshot { cacheWorkflow.snapshot }

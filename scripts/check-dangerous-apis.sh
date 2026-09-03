@@ -40,6 +40,33 @@ if dangerous_matches; then
   exit 1
 fi
 
+if command -v rg >/dev/null 2>&1; then
+  optimizer_forbidden_matches() {
+    rg -n 'forceTerminate|(^|[^A-Za-z.])kill\(|Process\(' \
+      Sources/CrabAppSupport/AIOptimization.swift \
+      Sources/CrabApp/RuntimeOptimizerModel.swift \
+      Sources/CrabApp/RuntimeOptimizerView.swift
+  }
+else
+  optimizer_forbidden_matches() {
+    grep -nEH 'forceTerminate|(^|[^A-Za-z.])kill\(|Process\(' \
+      Sources/CrabAppSupport/AIOptimization.swift \
+      Sources/CrabApp/RuntimeOptimizerModel.swift \
+      Sources/CrabApp/RuntimeOptimizerView.swift
+  }
+fi
+
+if optimizer_forbidden_matches; then
+  echo "Runtime optimization must not force-terminate processes or launch commands." >&2
+  exit 1
+fi
+
+optimizer_graceful_termination_count="$(count_matches '\.terminate\(\)' Sources/CrabApp/RuntimeOptimizerModel.swift)"
+if [ "$optimizer_graceful_termination_count" != "1" ]; then
+  echo "The reviewed runtime optimizer must keep exactly one standard app termination boundary." >&2
+  exit 1
+fi
+
 trash_api_count="$(count_matches 'FileManager\.default\.trashItem' Sources/CrabCore/SystemTrashMover.swift)"
 if [ "$trash_api_count" != "1" ]; then
   echo "The reviewed Trash boundary must contain exactly one system Trash call." >&2

@@ -32,8 +32,10 @@ struct MainView: View {
                         }
                     } else if model.mode == .harness {
                         HarnessOverviewView(model: model)
-                    } else {
+                    } else if model.mode == .archive {
                         ArchiveReminderView(model: model)
+                    } else {
+                        RuntimeOptimizerView(model: model.runtimeOptimizer)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -77,6 +79,8 @@ struct MainView: View {
             model.refreshHarnessInventory()
         case .archive:
             model.scanProjects()
+        case .optimizer:
+            model.runtimeOptimizer.refresh()
         }
     }
 
@@ -98,7 +102,7 @@ struct MainView: View {
                     model.setMode(mode)
                 }
             }
-            .frame(width: 390)
+            .frame(width: 520)
 
             Spacer()
 
@@ -114,6 +118,7 @@ struct MainView: View {
 
     private var isLoading: Bool {
         if model.mode == .cache, case .loading = model.state { return true }
+        if model.mode == .optimizer, model.runtimeOptimizer.state == .loading { return true }
         return false
     }
 
@@ -203,6 +208,11 @@ struct ScanSafetyFooter: View {
             CrabL10n.text(
                 "仅处理明确选择并二次确认的项目；6 个月未使用与大项目只作为标签提示",
                 "Only explicitly selected projects move to Trash after confirmation; inactive and large projects are labels only"
+            )
+        case .optimizer:
+            CrabL10n.text(
+                "只向明确选择的 AI 应用发送标准退出请求；不会强制退出或修改任何文件",
+                "Only selected AI apps receive a standard quit request; Crab never force-quits or changes files"
             )
         }
     }

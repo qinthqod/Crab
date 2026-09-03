@@ -11,6 +11,9 @@ All notable changes to Crab are documented here. This project follows
   drag-to-Applications flow.
 - The architecture-specific ZIP remains available exclusively for compatible
   in-app updates, and release checksums now cover both artifacts.
+- Added an on-demand Runtime Optimization page and menu-bar entry for reviewing
+  supported AI desktop app memory and sending user-confirmed standard quit
+  requests without force-quitting or modifying files.
 
 ## [0.1.1] - 2026-09-02
 
