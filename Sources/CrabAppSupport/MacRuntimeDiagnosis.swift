@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public enum MacRuntimeHealthLevel: Int, Comparable, Equatable, Sendable {
@@ -25,7 +26,7 @@ public enum MacRuntimeThermalState: Equatable, Sendable {
     case unknown
 }
 
-public struct MacRuntimeProcess: Identifiable, Equatable, Sendable {
+public struct MacRuntimeProcessUsage: Identifiable, Equatable, Sendable {
     public let name: String
     public let cpuPercent: Double
     public let memoryBytes: UInt64
@@ -60,7 +61,7 @@ public struct MacRuntimeSnapshot: Equatable, Sendable {
     public let swapUsedBytes: UInt64
     public let uptime: TimeInterval
     public let thermalState: MacRuntimeThermalState
-    public let processes: [MacRuntimeProcess]
+    public let processes: [MacRuntimeProcessUsage]
     public let mountedDiskImages: [MountedDiskImage]
 
     public init(
@@ -70,7 +71,7 @@ public struct MacRuntimeSnapshot: Equatable, Sendable {
         swapUsedBytes: UInt64,
         uptime: TimeInterval,
         thermalState: MacRuntimeThermalState,
-        processes: [MacRuntimeProcess],
+        processes: [MacRuntimeProcessUsage],
         mountedDiskImages: [MountedDiskImage]
     ) {
         self.diskAvailableBytes = max(0, diskAvailableBytes)
@@ -106,13 +107,13 @@ public struct MacRuntimeDiagnosis: Equatable, Sendable {
     public let level: MacRuntimeHealthLevel
     public let snapshot: MacRuntimeSnapshot
     public let findings: [MacRuntimeFinding]
-    public let resourceHeavyProcesses: [MacRuntimeProcess]
+    public let resourceHeavyProcesses: [MacRuntimeProcessUsage]
 
     public init(
         level: MacRuntimeHealthLevel,
         snapshot: MacRuntimeSnapshot,
         findings: [MacRuntimeFinding],
-        resourceHeavyProcesses: [MacRuntimeProcess]
+        resourceHeavyProcesses: [MacRuntimeProcessUsage]
     ) {
         self.level = level
         self.snapshot = snapshot
@@ -230,4 +231,182 @@ public enum MountedDiskImageParser {
             $0.mountURL.lastPathComponent.localizedStandardCompare($1.mountURL.lastPathComponent) == .orderedAscending
         }
     }
+}
+
+public protocol MacRuntimeSnapshotCollecting: Sendable {
+    func collect() -> MacRuntimeSnapshot
+}
+
+public protocol MacRuntimeDiagnosing: Sendable {
+    func diagnose() -> MacRuntimeDiagnosis
+}
+
+public struct MacRuntimeDiagnoser: MacRuntimeDiagnosing {
+    private let snapshotCollector: any MacRuntimeSnapshotCollecting
+
+    public init(snapshotCollector: any MacRuntimeSnapshotCollecting = SystemMacRuntimeSnapshotCollector()) {
+        self.snapshotCollector = snapshotCollector
+    }
+
+    public func diagnose() -> MacRuntimeDiagnosis {
+        MacRuntimeDiagnosisEvaluator.evaluate(snapshotCollector.collect())
+    }
+}
+
+public struct SystemMacRuntimeSnapshotCollector: MacRuntimeSnapshotCollecting {
+    private static let maximumReportedProcesses = 20
+
+    private let sampleInterval: TimeInterval
+    private let maximumPIDCount: Int
+    private let mountedDiskImageDataProvider: any MountedDiskImageDataProviding
+
+    public init(
+        sampleInterval: TimeInterval = 0.8,
+        maximumPIDCount: Int = 4_096,
+        mountedDiskImageDataProvider: any MountedDiskImageDataProviding = SystemMountedDiskImageDataProvider()
+    ) {
+        self.sampleInterval = min(max(sampleInterval, 0), 1)
+        self.maximumPIDCount = min(max(maximumPIDCount, 1), 4_096)
+        self.mountedDiskImageDataProvider = mountedDiskImageDataProvider
+    }
+
+    public func collect() -> MacRuntimeSnapshot {
+        let before = processCounters()
+        if sampleInterval > 0 {
+            Thread.sleep(forTimeInterval: sampleInterval)
+        }
+        let after = processCounters()
+        let capacities = diskCapacities()
+        let mountedImages = mountedDiskImageDataProvider.mountedDiskImageData()
+            .map(MountedDiskImageParser.parse) ?? []
+
+        return MacRuntimeSnapshot(
+            diskAvailableBytes: capacities.available,
+            diskTotalBytes: capacities.total,
+            memoryPressure: memoryPressure(),
+            swapUsedBytes: swapUsedBytes(),
+            uptime: ProcessInfo.processInfo.systemUptime,
+            thermalState: thermalState(),
+            processes: processUsage(before: before, after: after),
+            mountedDiskImages: mountedImages
+        )
+    }
+
+    private func diskCapacities() -> (available: Int64, total: Int64) {
+        let keys: Set<URLResourceKey> = [
+            .volumeAvailableCapacityForImportantUsageKey,
+            .volumeTotalCapacityKey,
+        ]
+        guard let values = try? URL(fileURLWithPath: "/").resourceValues(forKeys: keys) else {
+            return (0, 0)
+        }
+        return (
+            Int64(values.volumeAvailableCapacityForImportantUsage ?? 0),
+            Int64(values.volumeTotalCapacity ?? 0)
+        )
+    }
+
+    private func memoryPressure() -> MacRuntimeMemoryPressure {
+        var value: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        guard sysctlbyname("kern.memorystatus_vm_pressure_level", &value, &size, nil, 0) == 0 else {
+            return .unknown
+        }
+        if value & 4 != 0 { return .critical }
+        if value & 2 != 0 { return .warning }
+        if value & 1 != 0 { return .normal }
+        return .unknown
+    }
+
+    private func swapUsedBytes() -> UInt64 {
+        var usage = xsw_usage()
+        var size = MemoryLayout<xsw_usage>.size
+        guard sysctlbyname("vm.swapusage", &usage, &size, nil, 0) == 0 else { return 0 }
+        return usage.xsu_used
+    }
+
+    private func thermalState() -> MacRuntimeThermalState {
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal: .nominal
+        case .fair: .fair
+        case .serious: .serious
+        case .critical: .critical
+        @unknown default: .unknown
+        }
+    }
+
+    private func processCounters() -> [pid_t: NativeProcessCounter] {
+        var pids = [pid_t](repeating: 0, count: maximumPIDCount)
+        let listed = proc_listallpids(
+            &pids,
+            Int32(pids.count * MemoryLayout<pid_t>.size)
+        )
+        guard listed > 0 else { return [:] }
+
+        var counters: [pid_t: NativeProcessCounter] = [:]
+        for pid in pids.prefix(min(Int(listed), pids.count)) where pid > 0 {
+            var taskInfo = proc_taskinfo()
+            let size = Int32(MemoryLayout<proc_taskinfo>.size)
+            guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskInfo, size) == size else { continue }
+
+            var nameBuffer = [CChar](repeating: 0, count: 1_024)
+            let nameLength = Int(proc_name(pid, &nameBuffer, UInt32(nameBuffer.count)))
+            guard nameLength > 0 else { continue }
+            let name = String(
+                decoding: nameBuffer.prefix(nameLength).map { UInt8(bitPattern: $0) },
+                as: UTF8.self
+            )
+            guard !name.isEmpty else { continue }
+
+            counters[pid] = NativeProcessCounter(
+                name: name,
+                cpuNanoseconds: taskInfo.pti_total_user &+ taskInfo.pti_total_system,
+                residentBytes: taskInfo.pti_resident_size
+            )
+        }
+        return counters
+    }
+
+    private func processUsage(
+        before: [pid_t: NativeProcessCounter],
+        after: [pid_t: NativeProcessCounter]
+    ) -> [MacRuntimeProcessUsage] {
+        guard sampleInterval > 0 else { return [] }
+        var aggregated: [String: (cpu: Double, memory: UInt64)] = [:]
+
+        for (pid, current) in after {
+            guard let previous = before[pid], previous.name == current.name else { continue }
+            let delta = current.cpuNanoseconds >= previous.cpuNanoseconds
+                ? current.cpuNanoseconds - previous.cpuNanoseconds
+                : 0
+            let cpuPercent = Double(delta) / (sampleInterval * 1_000_000_000) * 100
+            let old = aggregated[current.name] ?? (0, 0)
+            aggregated[current.name] = (
+                old.cpu + cpuPercent,
+                old.memory &+ current.residentBytes
+            )
+        }
+
+        return aggregated.map { name, usage in
+            MacRuntimeProcessUsage(
+                name: name,
+                cpuPercent: usage.cpu,
+                memoryBytes: usage.memory
+            )
+        }
+        .sorted {
+            let leftScore = max($0.cpuPercent / 25, Double($0.memoryBytes) / 2_000_000_000)
+            let rightScore = max($1.cpuPercent / 25, Double($1.memoryBytes) / 2_000_000_000)
+            if leftScore != rightScore { return leftScore > rightScore }
+            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+        .prefix(Self.maximumReportedProcesses)
+        .map { $0 }
+    }
+}
+
+private struct NativeProcessCounter {
+    let name: String
+    let cpuNanoseconds: UInt64
+    let residentBytes: UInt64
 }

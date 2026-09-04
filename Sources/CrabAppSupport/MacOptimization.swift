@@ -36,6 +36,12 @@ public struct MacOptimizationTask: Equatable, Sendable {
 }
 
 public enum MacOptimizationCatalog {
+    static let mountedDiskImageProbe = MaintenanceCommand(
+        executablePath: "/usr/bin/hdiutil",
+        arguments: ["info", "-plist"],
+        timeoutSeconds: 8
+    )
+
     public static let defaultTasks: [MacOptimizationTask] = [
         MacOptimizationTask(
             id: .quickLook,
@@ -62,6 +68,10 @@ public enum MacOptimizationCatalog {
             )
         ),
     ]
+
+    static var reviewedCommands: [MaintenanceCommand] {
+        defaultTasks.map(\.command) + [mountedDiskImageProbe]
+    }
 }
 
 public enum MaintenanceCommandStatus: Equatable, Sendable {
@@ -79,21 +89,79 @@ public final class SystemMaintenanceCommandRunner: MaintenanceCommandRunning, @u
     public init() {}
 
     public func run(_ command: MaintenanceCommand) -> MaintenanceCommandStatus {
-        guard MacOptimizationCatalog.defaultTasks.contains(where: { $0.command == command }),
+        ReviewedSystemCommandExecutor.execute(command).status
+    }
+}
+
+public protocol MountedDiskImageDataProviding: Sendable {
+    func mountedDiskImageData() -> Data?
+}
+
+public final class SystemMountedDiskImageDataProvider: MountedDiskImageDataProviding, @unchecked Sendable {
+    public init() {}
+
+    public func mountedDiskImageData() -> Data? {
+        let result = ReviewedSystemCommandExecutor.execute(
+            MacOptimizationCatalog.mountedDiskImageProbe,
+            capturesOutput: true
+        )
+        guard result.status == .succeeded else { return nil }
+        return result.output
+    }
+}
+
+private struct ReviewedSystemCommandResult {
+    let status: MaintenanceCommandStatus
+    let output: Data?
+}
+
+private final class CommandOutputBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Data?
+
+    func store(_ data: Data) {
+        lock.lock()
+        value = data
+        lock.unlock()
+    }
+
+    func load() -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
+private final class SendablePipe: @unchecked Sendable {
+    let pipe = Pipe()
+}
+
+private enum ReviewedSystemCommandExecutor {
+    private static let maximumCapturedBytes = 2 * 1_024 * 1_024
+
+    static func execute(
+        _ command: MaintenanceCommand,
+        capturesOutput: Bool = false
+    ) -> ReviewedSystemCommandResult {
+        guard MacOptimizationCatalog.reviewedCommands.contains(command),
               !command.requiresAdministrator,
               FileManager.default.isExecutableFile(atPath: command.executablePath)
-        else { return .unavailable }
+        else {
+            return ReviewedSystemCommandResult(status: .unavailable, output: nil)
+        }
 
         // This is the only process-launch boundary for Mac Optimization. The
-        // executable and arguments come exclusively from MacOptimizationCatalog.
+        // executable and arguments come exclusively from the reviewed catalog.
         // No shell is involved and no user-provided value can reach Process.
         // Apple Foundation Process reference:
         // https://developer.apple.com/documentation/foundation/process
         let process = Process()
         process.executableURL = URL(fileURLWithPath: command.executablePath)
         process.arguments = command.arguments
-        process.standardOutput = FileHandle.nullDevice
+        let outputPipe = capturesOutput ? SendablePipe() : nil
+        process.standardOutput = outputPipe?.pipe ?? FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
 
         let didExit = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in didExit.signal() }
@@ -101,7 +169,16 @@ public final class SystemMaintenanceCommandRunner: MaintenanceCommandRunning, @u
         do {
             try process.run()
         } catch {
-            return .failed(-1)
+            return ReviewedSystemCommandResult(status: .failed(-1), output: nil)
+        }
+
+        let outputBox = CommandOutputBox()
+        let didReadOutput = DispatchSemaphore(value: 0)
+        if let outputPipe {
+            DispatchQueue.global(qos: .utility).async {
+                outputBox.store(outputPipe.pipe.fileHandleForReading.readDataToEndOfFile())
+                didReadOutput.signal()
+            }
         }
 
         let deadline = DispatchTime.now() + command.timeoutSeconds
@@ -109,9 +186,25 @@ public final class SystemMaintenanceCommandRunner: MaintenanceCommandRunning, @u
             // terminate() applies only to the maintenance child Crab launched.
             // Crab never sends a PID-based signal to an arbitrary user process.
             if process.isRunning { process.terminate() }
-            return .timedOut
+            _ = didExit.wait(timeout: .now() + 1)
+            outputPipe?.pipe.fileHandleForReading.closeFile()
+            return ReviewedSystemCommandResult(status: .timedOut, output: nil)
         }
-        return process.terminationStatus == 0 ? .succeeded : .failed(process.terminationStatus)
+
+        if outputPipe != nil,
+           didReadOutput.wait(timeout: .now() + 1) != .success {
+            outputPipe?.pipe.fileHandleForReading.closeFile()
+            return ReviewedSystemCommandResult(status: .failed(-1), output: nil)
+        }
+
+        let output = outputBox.load()
+        guard output?.count ?? 0 <= maximumCapturedBytes else {
+            return ReviewedSystemCommandResult(status: .failed(-1), output: nil)
+        }
+        let status: MaintenanceCommandStatus = process.terminationStatus == 0
+            ? .succeeded
+            : .failed(process.terminationStatus)
+        return ReviewedSystemCommandResult(status: status, output: output)
     }
 }
 

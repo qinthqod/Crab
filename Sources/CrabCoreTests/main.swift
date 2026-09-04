@@ -2304,7 +2304,7 @@ private let tests: [(String, () throws -> Void)] = [
     }),
     ("Runtime diagnosis shows only the five most relevant heavy processes", {
         let processes = (0 ..< 8).map { index in
-            MacRuntimeProcess(
+            MacRuntimeProcessUsage(
                 name: "Process \(index)",
                 cpuPercent: Double(80 - index),
                 memoryBytes: UInt64(index + 1) * 500_000_000
@@ -2350,6 +2350,30 @@ private let tests: [(String, () throws -> Void)] = [
         try expect(images.count == 1, "Unsafe or incomplete mount records must be rejected")
         try expect(images.first?.mountURL.path == "/Volumes/Crab", "The exact volume mount must be retained")
         try expect(images.first?.imageURL.path == "/Users/test/Downloads/Crab.dmg", "The backing image must be retained for review")
+    }),
+    ("System runtime collection stays bounded and consumes only local metadata", {
+        let plist: [String: Any] = [
+            "images": [[
+                "image-path": "/Users/test/Downloads/Fixture.dmg",
+                "system-entities": [["mount-point": "/Volumes/Fixture", "dev-entry": "/dev/disk11s1"]],
+            ]],
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        let collector = SystemMacRuntimeSnapshotCollector(
+            sampleInterval: 0.01,
+            maximumPIDCount: 512,
+            mountedDiskImageDataProvider: StaticMountedDiskImageDataProvider(data: data)
+        )
+        let startedAt = Date()
+
+        let snapshot = collector.collect()
+
+        try expect(Date().timeIntervalSince(startedAt) < 2, "Local diagnosis must have a finite interactive bound")
+        try expect(snapshot.diskTotalBytes > 0, "The startup volume capacity must be collected")
+        try expect(snapshot.diskAvailableBytes <= snapshot.diskTotalBytes, "Available capacity cannot exceed total capacity")
+        try expect(snapshot.uptime > 0, "System uptime must be collected without launching a command")
+        try expect(snapshot.processes.count <= 20, "Process metadata must be reduced before reaching the UI")
+        try expect(snapshot.mountedDiskImages.map(\.mountURL.path) == ["/Volumes/Fixture"], "Mounted images must come from the injected local plist provider")
     }),
     ("Mac optimizer exposes only the reviewed maintenance allowlist", {
         let tasks = MacOptimizationCatalog.defaultTasks
@@ -2749,6 +2773,14 @@ private final class RecordingMaintenanceCommandRunner: MaintenanceCommandRunning
     func run(_ command: MaintenanceCommand) -> MaintenanceCommandStatus {
         commands.append(command)
         return statuses.isEmpty ? .failed(-1) : statuses.removeFirst()
+    }
+}
+
+private struct StaticMountedDiskImageDataProvider: MountedDiskImageDataProviding {
+    let data: Data?
+
+    func mountedDiskImageData() -> Data? {
+        data
     }
 }
 
