@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MenuPanel: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var desktopPresence: DesktopPresenceController
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -138,7 +139,7 @@ struct MenuPanel: View {
     }
 
     private func showMainWindow() {
-        NSApplication.shared.setActivationPolicy(.regular)
+        desktopPresence.prepareToShowMainWindow()
         openWindow(id: "main")
 
         DispatchQueue.main.async {

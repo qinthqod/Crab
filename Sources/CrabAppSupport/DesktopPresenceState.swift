@@ -20,7 +20,16 @@ public struct DesktopPresenceState: Equatable, Sendable {
     }
 
     @discardableResult
+    public mutating func closeMainWindow() -> Bool {
+        guard phase != .menuBarOnly else { return false }
+        phase = .menuBarOnly
+        return true
+    }
+
+    @discardableResult
     public mutating func restoreMainWindow() -> Bool {
-        false
+        guard phase != .mainWindow else { return false }
+        phase = .mainWindow
+        return true
     }
 }

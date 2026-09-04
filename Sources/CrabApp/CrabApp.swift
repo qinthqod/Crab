@@ -5,6 +5,7 @@ import SwiftUI
 @main
 struct CrabDesktopApp: App {
     @StateObject private var model = AppModel()
+    @StateObject private var desktopPresence = DesktopPresenceController()
     @AppStorage(CrabLanguagePreference.defaultsKey)
     private var languagePreference = CrabLanguagePreference.system.rawValue
 
@@ -14,7 +15,7 @@ struct CrabDesktopApp: App {
 
     var body: some Scene {
         WindowGroup("Crab", id: "main") {
-            MainView(model: model)
+            MainView(model: model, desktopPresence: desktopPresence)
                 .id(languagePreference)
                 .environment(\.locale, interfaceLocale)
                 .frame(
@@ -32,7 +33,7 @@ struct CrabDesktopApp: App {
         .windowStyle(.hiddenTitleBar)
 
         MenuBarExtra {
-            MenuPanel(model: model)
+            MenuPanel(model: model, desktopPresence: desktopPresence)
                 .id(languagePreference)
                 .environment(\.locale, interfaceLocale)
         } label: {

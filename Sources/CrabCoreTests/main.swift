@@ -2226,6 +2226,25 @@ private let tests: [(String, () throws -> Void)] = [
         try expect(presence.phase == .mainWindow, "Minimizing must not switch Crab to an accessory-only mode")
         try expect(presence.isMenuBarVisible, "The menu icon must remain visible after minimizing")
     }),
+    ("Closing the main window leaves Crab running in the menu bar", {
+        var presence = DesktopPresenceState()
+
+        let handled = presence.closeMainWindow()
+
+        try expect(handled, "Closing the main window should switch Crab to menu-bar-only presence")
+        try expect(presence.phase == .menuBarOnly, "The Dock presence must disappear after closing the main window")
+        try expect(presence.isMenuBarVisible, "Closing the window must keep the menu icon visible")
+    }),
+    ("Opening Crab from the menu bar restores normal Dock presence", {
+        var presence = DesktopPresenceState()
+        _ = presence.closeMainWindow()
+
+        let restored = presence.restoreMainWindow()
+
+        try expect(restored, "Opening the main window should restore normal application presence")
+        try expect(presence.phase == .mainWindow, "The Dock icon must return with the main window")
+        try expect(!presence.restoreMainWindow(), "Restoring an already visible main window should be a no-op")
+    }),
     ("Desktop presence never intercepts standard minimization", {
         var presence = DesktopPresenceState()
         let handled = presence.minimizeToMenuBar(enabled: false)

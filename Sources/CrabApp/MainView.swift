@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var desktopPresence: DesktopPresenceController
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -49,6 +50,12 @@ struct MainView: View {
                     ScanSafetyFooter(mode: model.mode)
                 }
             }
+        }
+        .background {
+            MainWindowCloseObserver {
+                desktopPresence.mainWindowWillClose()
+            }
+            .frame(width: 0, height: 0)
         }
         .onAppear {
             NSApplication.shared.activate(ignoringOtherApps: true)
