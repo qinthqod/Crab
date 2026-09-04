@@ -2376,10 +2376,18 @@ private let tests: [(String, () throws -> Void)] = [
         try expect(snapshot.mountedDiskImages.map(\.mountURL.path) == ["/Volumes/Fixture"], "Mounted images must come from the injected local plist provider")
     }),
     ("Mac optimizer exposes only the reviewed maintenance allowlist", {
-        let tasks = MacOptimizationCatalog.defaultTasks
+        let tasks = MacOptimizationCatalog.allTasks
         try expect(
-            tasks.map(\.id) == [.quickLook, .launchServices, .finder],
-            "The one-click workflow must keep a deterministic reviewed order"
+            MacOptimizationCatalog.automaticTasks.map(\.id) == [.quickLook, .launchServices],
+            "The one-click workflow must contain only non-disruptive automatic tasks"
+        )
+        try expect(
+            MacOptimizationCatalog.optionalTasks.map(\.id) == [.finder, .dock],
+            "Finder and Dock refreshes must remain explicit optional actions"
+        )
+        try expect(
+            tasks.map(\.id) == [.quickLook, .launchServices, .finder, .dock],
+            "The reviewed catalog must keep a deterministic order"
         )
         try expect(
             tasks.allSatisfy { $0.command.executablePath.hasPrefix("/usr/bin/") || $0.command.executablePath.hasPrefix("/System/Library/") },
@@ -2395,18 +2403,29 @@ private let tests: [(String, () throws -> Void)] = [
         )
     }),
     ("Mac optimizer keeps running after an individual task fails", {
-        let runner = RecordingMaintenanceCommandRunner(statuses: [.succeeded, .failed(7), .succeeded])
+        let runner = RecordingMaintenanceCommandRunner(statuses: [.succeeded, .failed(7)])
         let results = MacOptimizer(commandRunner: runner).run()
 
-        try expect(results.count == 3, "Every reviewed maintenance task must produce a receipt")
-        try expect(results.map(\.outcome) == [.applied, .failed, .applied], "A failed task must not stop later work")
-        try expect(runner.commands == MacOptimizationCatalog.defaultTasks.map(\.command), "Only catalog commands may run")
+        try expect(results.count == 2, "Every automatic maintenance task must produce a receipt")
+        try expect(results.map(\.outcome) == [.applied, .failed], "A failed task must not stop later work")
+        try expect(runner.commands == MacOptimizationCatalog.automaticTasks.map(\.command), "Only automatic catalog commands may run")
     }),
     ("Mac optimizer reports an unavailable executable without launching it", {
-        let runner = RecordingMaintenanceCommandRunner(statuses: [.unavailable, .succeeded, .succeeded])
+        let runner = RecordingMaintenanceCommandRunner(statuses: [.unavailable, .succeeded])
         let results = MacOptimizer(commandRunner: runner).run()
         try expect(results.first?.outcome == .unavailable, "Missing system tools must be reported honestly")
-        try expect(results.count == 3, "An unavailable tool must not block the workflow")
+        try expect(results.count == 2, "An unavailable tool must not block the workflow")
+    }),
+    ("Mac optimizer runs a fixed optional refresh only after an explicit task id", {
+        let runner = RecordingMaintenanceCommandRunner(statuses: [.succeeded])
+        let optimizer = MacOptimizer(commandRunner: runner)
+
+        let automaticAttempt = optimizer.runOptional(.quickLook)
+        let optionalResult = optimizer.runOptional(.dock)
+
+        try expect(automaticAttempt == nil, "An automatic task must not be reachable through the optional action boundary")
+        try expect(optionalResult?.taskID == .dock, "The selected optional task must produce its own receipt")
+        try expect(runner.commands == MacOptimizationCatalog.optionalTasks.filter { $0.id == .dock }.map(\.command), "Only the exact selected optional command may run")
     }),
     ("System maintenance runner refuses commands outside the reviewed catalog", {
         let status = SystemMaintenanceCommandRunner().run(MaintenanceCommand(

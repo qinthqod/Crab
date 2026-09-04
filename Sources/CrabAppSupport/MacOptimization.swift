@@ -4,6 +4,7 @@ public enum MacOptimizationTaskID: String, CaseIterable, Equatable, Sendable {
     case quickLook
     case launchServices
     case finder
+    case dock
 }
 
 public struct MaintenanceCommand: Equatable, Sendable {
@@ -42,7 +43,7 @@ public enum MacOptimizationCatalog {
         timeoutSeconds: 8
     )
 
-    public static let defaultTasks: [MacOptimizationTask] = [
+    public static let automaticTasks: [MacOptimizationTask] = [
         MacOptimizationTask(
             id: .quickLook,
             command: MaintenanceCommand(
@@ -59,6 +60,9 @@ public enum MacOptimizationCatalog {
                 timeoutSeconds: 20
             )
         ),
+    ]
+
+    public static let optionalTasks: [MacOptimizationTask] = [
         MacOptimizationTask(
             id: .finder,
             command: MaintenanceCommand(
@@ -67,10 +71,21 @@ public enum MacOptimizationCatalog {
                 timeoutSeconds: 5
             )
         ),
+        MacOptimizationTask(
+            id: .dock,
+            command: MaintenanceCommand(
+                executablePath: "/usr/bin/killall",
+                arguments: ["-HUP", "Dock"],
+                timeoutSeconds: 5
+            )
+        ),
     ]
 
+    public static let allTasks = automaticTasks + optionalTasks
+    public static let defaultTasks = automaticTasks
+
     static var reviewedCommands: [MaintenanceCommand] {
-        defaultTasks.map(\.command) + [mountedDiskImageProbe]
+        allTasks.map(\.command) + [mountedDiskImageProbe]
     }
 }
 
@@ -242,6 +257,9 @@ public struct MacOptimizer: Sendable {
     }
 
     public func run(_ task: MacOptimizationTask) -> MacOptimizationResult {
+        guard MacOptimizationCatalog.allTasks.contains(task) else {
+            return MacOptimizationResult(taskID: task.id, outcome: .unavailable)
+        }
         let outcome: MacOptimizationOutcome
         switch commandRunner.run(task.command) {
         case .succeeded:
@@ -252,5 +270,12 @@ public struct MacOptimizer: Sendable {
             outcome = .failed
         }
         return MacOptimizationResult(taskID: task.id, outcome: outcome)
+    }
+
+    public func runOptional(_ taskID: MacOptimizationTaskID) -> MacOptimizationResult? {
+        guard let task = MacOptimizationCatalog.optionalTasks.first(where: { $0.id == taskID }) else {
+            return nil
+        }
+        return run(task)
     }
 }

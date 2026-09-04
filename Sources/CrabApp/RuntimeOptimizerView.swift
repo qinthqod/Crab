@@ -180,6 +180,7 @@ struct RuntimeOptimizerView: View {
         case .quickLook: CrabL10n.text("预览服务", "Quick Look")
         case .launchServices: CrabL10n.text("应用关联", "App Associations")
         case .finder: "Finder"
+        case .dock: "Dock"
         }
     }
 
@@ -188,6 +189,7 @@ struct RuntimeOptimizerView: View {
         case .quickLook: CrabL10n.text("正在刷新文件预览服务", "Refreshing file previews")
         case .launchServices: CrabL10n.text("正在整理应用关联", "Refreshing app associations")
         case .finder: CrabL10n.text("正在重启 Finder", "Restarting Finder")
+        case .dock: CrabL10n.text("正在刷新 Dock", "Refreshing the Dock")
         }
     }
 
