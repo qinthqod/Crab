@@ -218,8 +218,8 @@ struct ScanSafetyFooter: View {
             )
         case .optimizer:
             CrabL10n.text(
-                "只读查看 AI 应用的运行占用；不会关闭、暂停应用或修改任何文件",
-                "Read-only AI app usage overview; Crab never closes, pauses, or modifies applications"
+                "体检数据仅在本机使用；不会删除文件或自动关闭第三方应用",
+                "Checkup data stays on this Mac; Crab never deletes files or automatically closes third-party apps"
             )
         }
     }
