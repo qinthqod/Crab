@@ -16,10 +16,10 @@ Coding Harness 产生的本地存储。
 
 ## 下载
 
-[**下载 Crab v0.1.2 Apple Silicon 版 →**](https://github.com/qinthqod/Crab/releases/download/v0.1.2/Crab-0.1.2-macOS-arm64.dmg)
+[**下载 Crab v0.2.0 Apple Silicon 版 →**](https://github.com/qinthqod/Crab/releases/download/v0.2.0/Crab-0.2.0-macOS-arm64.dmg)
 
 Crab 需要 Apple Silicon 与 macOS 14 或更高版本。安装前可下载
-[SHA-256 校验文件](https://github.com/qinthqod/Crab/releases/download/v0.1.2/SHA256SUMS.txt)。
+[SHA-256 校验文件](https://github.com/qinthqod/Crab/releases/download/v0.2.0/SHA256SUMS.txt)。
 全部版本和发布说明请前往 [GitHub Releases](https://github.com/qinthqod/Crab/releases)。
 
 > **macOS 首次打开说明：**当前公开测试版采用 ad-hoc 签名，尚未经过 Apple 公证。
@@ -30,7 +30,7 @@ Crab 需要 Apple Silicon 与 macOS 14 或更高版本。安装前可下载
 
 - **缓存清理** — 扫描已安装 AI 桌面应用与命令行工具中经过审核、可重新生成的精确缓存目录。
 - **应用管理** — 显示已安装和运行中的 AI 工具、最近使用时间、可获取的本地用量指标，并支持仅卸载应用本体。
-- **运行优化** — 按需、只读统计正在运行且已支持的 AI 桌面应用及其子进程内存；不会关闭、暂停或结束应用与子进程。
+- **运行优化** — 用户主动点击后，为整台 Mac 刷新文件预览、应用关联和 Finder；不删除文件，也不关闭第三方应用。
 - **项目清理** — 自动发现项目并关联到 AI 应用；用户明确选择并二次确认后，才可将项目移入废纸篓。
 - **风险提示** — 为超过 6 个月未使用和不小于 1 GB 的项目添加标签；标签不会自动选择或限制项目。
 - **双语界面** — 默认跟随 macOS 系统语言，也可以明确选择中文或英文。
@@ -83,14 +83,14 @@ docs/             产品、工程、安全、研究和技术规格
 ## 系统要求
 
 - macOS 14 或更高版本
-- 可下载的 v0.1.2 测试版适用于 Apple Silicon
+- 可下载的 v0.2.0 测试版适用于 Apple Silicon
 - Intel Mac 可使用兼容的 Swift 6 工具链从源码构建
 - 从源码构建需要 Swift 6 工具链
 
 ## 安装公开测试版
 
-下载 [`Crab-0.1.2-macOS-arm64.dmg`](https://github.com/qinthqod/Crab/releases/download/v0.1.2/Crab-0.1.2-macOS-arm64.dmg)
-和 [`SHA256SUMS.txt`](https://github.com/qinthqod/Crab/releases/download/v0.1.2/SHA256SUMS.txt)，
+下载 [`Crab-0.2.0-macOS-arm64.dmg`](https://github.com/qinthqod/Crab/releases/download/v0.2.0/Crab-0.2.0-macOS-arm64.dmg)
+和 [`SHA256SUMS.txt`](https://github.com/qinthqod/Crab/releases/download/v0.2.0/SHA256SUMS.txt)，
 验证校验值并打开磁盘映像，然后把 `Crab.app` 拖到“Applications（应用程序）”快捷方式。
 复制完成后推出 Crab 磁盘映像。
 

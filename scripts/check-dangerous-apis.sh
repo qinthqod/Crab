@@ -22,6 +22,7 @@ if command -v rg >/dev/null 2>&1; then
       --glob '!HarnessUpdate.swift' \
       --glob '!HarnessUsage.swift' \
       --glob '!CrabAppInstaller.swift' \
+      --glob '!MacOptimization.swift' \
       "$dangerous_pattern" $scan_roots
   }
 else
@@ -31,6 +32,7 @@ else
       ! -name 'HarnessUpdate.swift' \
       ! -name 'HarnessUsage.swift' \
       ! -name 'CrabAppInstaller.swift' \
+      ! -name 'MacOptimization.swift' \
       -exec grep -nEH "$dangerous_pattern" {} +
   }
 fi
@@ -40,24 +42,32 @@ if dangerous_matches; then
   exit 1
 fi
 
+optimizer_boundary="Sources/CrabAppSupport/MacOptimization.swift"
+optimizer_process_count="$(count_matches 'let process = Process\(\)' "$optimizer_boundary")"
+optimizer_child_terminate_count="$(count_matches 'process\.terminate\(\)' "$optimizer_boundary")"
+if [ "$optimizer_process_count" != "1" ] || [ "$optimizer_child_terminate_count" != "1" ]; then
+  echo "Reviewed Mac optimization process boundary changed; inspect it before release." >&2
+  exit 1
+fi
+
 if command -v rg >/dev/null 2>&1; then
   optimizer_forbidden_matches() {
-    rg -n '\.terminate\(|forceTerminate|(^|[^A-Za-z.])kill\(|Process\(' \
-      Sources/CrabAppSupport/AIOptimization.swift \
+    rg -n '/bin/(sh|bash)|sudo|NSRunningApplication|forceTerminate|removeItem|trashItem|(^|[^A-Za-z.])(kill|unlink|rmdir|rename|system)\(' \
+      "$optimizer_boundary" \
       Sources/CrabApp/RuntimeOptimizerModel.swift \
       Sources/CrabApp/RuntimeOptimizerView.swift
   }
 else
   optimizer_forbidden_matches() {
-    grep -nEH '\.terminate\(|forceTerminate|(^|[^A-Za-z.])kill\(|Process\(' \
-      Sources/CrabAppSupport/AIOptimization.swift \
+    grep -nEH '/bin/(sh|bash)|sudo|NSRunningApplication|forceTerminate|removeItem|trashItem|(^|[^A-Za-z.])(kill|unlink|rmdir|rename|system)\(' \
+      "$optimizer_boundary" \
       Sources/CrabApp/RuntimeOptimizerModel.swift \
       Sources/CrabApp/RuntimeOptimizerView.swift
   }
 fi
 
 if optimizer_forbidden_matches; then
-  echo "Runtime optimization must remain read-only and never terminate processes or launch commands." >&2
+  echo "Mac optimization must not use shells, sudo, or arbitrary process termination." >&2
   exit 1
 fi
 

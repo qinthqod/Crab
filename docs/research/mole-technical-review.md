@@ -403,7 +403,7 @@ action: trash
 - 编程语言包管理器缓存；
 - 普通大文件和 Downloads 扫描；
 - App 卸载与残留清理；
-- 通用系统优化、监控和健康分；Crab 只提供已支持 AI 桌面应用的按需、只读运行内存盘点。
+- 通用系统缓存删除、监控和健康分；Crab 的运行优化只执行单独审核的系统维护白名单。
 
 ### 7.1 Runtime Optimizer 补充调研（2026-09-04）
 
@@ -413,15 +413,15 @@ action: trash
 不会终止进程。Mole 的 Optimize 主体是按名称执行的 Finder、DNS、Spotlight、
 LaunchServices 和数据库维护任务，而不是通过 `purge` 或强杀进程制造“已释放内存”。
 
-Crab 不复制这些通用系统维护任务。可借鉴的产品原则是：只在用户打开功能时运行、
-展示明确任务与结果、不确定时跳过、需要变更时重新验证。基于 Crab 的单一 AI 工具
-范围，Runtime Optimization 独立实现为“已支持 AI 桌面应用进程树占用的按需只读
-盘点”。它不使用 sudo、永久 helper、`kill -9`、`forceTerminate`、`terminate`、
-进程暂停或文件删除。参考来源：<https://mole.fit/zh/mac-optimizer>、
-<https://mole.fit/mac-optimizer.md>、<https://github.com/tw93/mole>。实现只使用当前
-macOS SDK 的 `libproc.h` / `proc_info.h` 读取 PID、父 PID 和 RSS。macOS 没有允许
-普通 App 强制另一个 App 在保持运行时安全释放私有内存的公开接口，因此 Crab
-不提供虚假的“一键释放”，也不把估算占用宣传为已经释放的内存。
+2026-09-04 的后续产品决策将 Runtime Optimization 调整为面向整台 Mac 的主动维护
+流程，而不是 AI 应用内存列表。Crab 仍不复制 Mole 的完整任务集，只采纳其“任务
+目录、逐项结果、不确定时跳过”的结构。首版白名单仅包含 `qlmanage -r`、固定系统
+路径下的 `lsregister -gc`，以及明确告知影响后的 Finder HUP 重启；不包含 DNS 全量
+刷新、Spotlight 重建、数据库 vacuum、权限修复、启动项处理、系统服务批量终止或
+任何文件删除。所有任务使用固定绝对路径和固定参数，不使用 shell、sudo、永久
+helper、`kill -9` 或用户输入。参考来源：<https://mole.fit/zh/mac-optimizer>、
+<https://github.com/tw93/mole/blob/867270e93c42378b57f9706406845c7fd5a1fe91/lib/optimize/catalog.sh>、
+<https://github.com/tw93/mole/blob/867270e93c42378b57f9706406845c7fd5a1fe91/lib/optimize/tasks.sh>。
 - 任意项目构建产物；
 - 聊天、Memory、凭据、workspace state、项目源码和模型权重的自动清理。
 

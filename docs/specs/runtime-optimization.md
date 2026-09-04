@@ -2,54 +2,58 @@
 
 ## Objective
 
-Help users understand active memory held by supported AI desktop applications
-without pretending that macOS needs a generic "memory cleaner" or that Crab can
-force another application to release private memory while it remains running.
-Crab measures the running applications it already knows and explains their
-point-in-time footprint through a read-only view.
+Run a small, reviewed set of macOS maintenance actions that refresh rebuildable
+system state. This feature serves the whole Mac rather than only supported AI
+applications. It does not pretend to "release RAM", close third-party apps, or
+delete user files.
 
 ## User Flow
 
-1. Opening **运行优化 / Optimize** starts a lightweight process snapshot.
-2. The result lists only supported AI desktop applications that are currently
-   running, ordered by estimated resident memory.
-3. Each row shows the application, running duration when available, and the
-   estimated resident memory held by its process tree.
-4. The page explains that the snapshot is read-only and offers only refresh.
-5. Crab never presents a selection, quit, pause, kill, or fake memory-release
-   action.
+1. Opening **运行优化 / Optimize Mac** shows an idle home page. Nothing runs
+   automatically.
+2. The page names the reviewed tasks and explains that Finder windows may
+   briefly refresh.
+3. **开始运行 / Start** enters a dedicated loading page with the animated Crab
+   mascot and the current task.
+4. Tasks continue independently when one is unavailable, fails, or times out.
+5. The result page shows one receipt per task and offers **重新运行 / Run Again**
+   and **返回首页 / Back**.
 
-The menu-bar menu exposes **查看运行占用… / View Runtime Usage…** and opens the
-same read-only view.
+The menu-bar menu exposes **运行优化… / Optimize Mac…** and opens the idle page;
+it never starts maintenance from the menu by itself.
 
-## Measurement
+## Default Task Catalog
 
-- The snapshot uses macOS's read-only `libproc` interfaces and retains only PID,
-  parent PID, and resident set size. It does not launch a shell command or read
-  process arguments.
-- A desktop application's estimate includes its recorded root process and
-  descendants, so Electron helper processes are not silently omitted.
-- Unrelated processes and command-line arguments are neither collected nor
-  displayed.
-- Memory values are point-in-time estimates, not a promise of bytes that macOS
-  will make immediately available.
+- **Quick Look**: `/usr/bin/qlmanage -r` resets the Quick Look server and its
+  generator cache.
+- **App Associations**: the fixed system `lsregister -gc` executable asks
+  LaunchServices to garbage-collect stale registration state.
+- **Finder**: `/usr/bin/killall -HUP Finder` restarts only the current user's
+  Finder shell. This can briefly refresh Finder windows.
+
+DNS cache flushing is intentionally excluded. The macOS `dscacheutil` manual
+states that whole-cache flushing should be used only in extreme cases, and the
+complete DNS refresh used by Mole also requires administrator access.
 
 ## Safety Boundaries
 
-- Scope is limited to exact bundle identifiers in `HarnessCatalog`.
-- Crab never uses `terminate`, `kill`, `forceTerminate`, `purge`, process
-  suspension, administrator access, or a privileged helper for this feature.
-- Crab never closes or ends supported apps, their child processes, itself,
-  system services, security software, or unknown processes.
-- No files, caches, conversations, projects, models, credentials, or settings
-  are changed by Runtime Optimization.
+- Scope is limited to the immutable `MacOptimizationCatalog`; callers cannot
+  supply an executable or arguments.
+- Commands use fixed absolute system paths and fixed arguments. Crab never uses
+  a shell, `sudo`, administrator access, or a privileged helper.
+- Crab never closes third-party apps, AI apps, security software, or arbitrary
+  processes. Only the fixed Finder restart task signals a named system shell.
+- `Process.terminate()` is reserved for a timed-out maintenance child started by
+  Crab itself; it is never applied to another existing process.
+- No user files, conversations, projects, models, credentials, or settings are
+  read or deleted by Runtime Optimization.
 - Optimization runs only when requested and has no background polling cost.
 
 ## Verification
 
-- Unit tests cover process-tree accounting and exclusion of unrelated processes.
-- The dangerous-API gate fails if runtime optimization introduces termination,
-  process launching, or force-quit APIs.
-- App tests and smoke tests prove the new page does not block launch or the main
-  actor.
-- The menu item opens the review page instead of executing immediately.
+- Unit tests lock the task order, executable allowlist, no-admin policy, and
+  continue-on-failure receipts.
+- The dangerous-API gate permits exactly one reviewed `Process` boundary and
+  rejects shells, `sudo`, arbitrary kill APIs, and app termination APIs.
+- Every task has a finite timeout and executes off the main actor.
+- The menu item opens the home page instead of executing immediately.

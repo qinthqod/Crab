@@ -19,9 +19,9 @@ private func expect(
 }
 
 private let tests: [(String, () throws -> Void)] = [
-    ("Version identifies the 0.1.2 release", {
+    ("Version identifies the 0.2.0 release", {
         try expect(
-            CrabCore.version == "0.1.2",
+            CrabCore.version == "0.2.0",
             "Expected release version, got \(CrabCore.version)"
         )
     }),
@@ -2176,43 +2176,46 @@ private let tests: [(String, () throws -> Void)] = [
         try expect(presence.phase == .mainWindow, "Crab must retain normal application presence")
         try expect(presence.isMenuBarVisible, "The menu icon must not depend on a minimization preference")
     }),
-    ("Runtime optimizer accounts for an AI app process tree only", {
-        let snapshot = AIOptimizationSnapshotBuilder().build(
-            applications: [
-                RunningAIApplicationSeed(
-                    appID: "com.openai.chat",
-                    displayName: "ChatGPT",
-                    processIdentifier: 100,
-                    launchedAt: Date(timeIntervalSince1970: 100)
-                ),
-                RunningAIApplicationSeed(
-                    appID: "com.anthropic.claudefordesktop",
-                    displayName: "Claude",
-                    processIdentifier: 200,
-                    launchedAt: Date(timeIntervalSince1970: 200)
-                ),
-            ],
-            processes: [
-                ProcessResourceSample(processIdentifier: 100, parentProcessIdentifier: 1, residentBytes: 200),
-                ProcessResourceSample(processIdentifier: 101, parentProcessIdentifier: 100, residentBytes: 300),
-                ProcessResourceSample(processIdentifier: 102, parentProcessIdentifier: 101, residentBytes: 400),
-                ProcessResourceSample(processIdentifier: 200, parentProcessIdentifier: 1, residentBytes: 500),
-                ProcessResourceSample(processIdentifier: 999, parentProcessIdentifier: 1, residentBytes: 9_999),
-            ]
-        )
-
-        try expect(snapshot.applications.count == 2, "Only the supplied supported AI apps should appear")
-        try expect(snapshot.applications[0].appID == "com.openai.chat", "Apps should sort by process-tree memory")
-        try expect(snapshot.applications[0].residentBytes == 900, "Root and descendant RSS should be summed")
-        try expect(snapshot.totalResidentBytes == 1_400, "Unrelated process memory must be excluded")
-    }),
-    ("Runtime optimizer reads the current process through macOS libproc", {
-        let samples = try SystemProcessResourceSampler().sample()
-        let ownPID = ProcessInfo.processInfo.processIdentifier
+    ("Mac optimizer exposes only the reviewed maintenance allowlist", {
+        let tasks = MacOptimizationCatalog.defaultTasks
         try expect(
-            samples.contains { $0.processIdentifier == ownPID && $0.residentBytes > 0 },
-            "The read-only process sampler should include the current test process"
+            tasks.map(\.id) == [.quickLook, .launchServices, .finder],
+            "The one-click workflow must keep a deterministic reviewed order"
         )
+        try expect(
+            tasks.allSatisfy { $0.command.executablePath.hasPrefix("/usr/bin/") || $0.command.executablePath.hasPrefix("/System/Library/") },
+            "Every maintenance executable must use a fixed system path"
+        )
+        try expect(
+            tasks.allSatisfy { !$0.command.arguments.contains(where: { $0.contains(";") || $0.contains("&&") }) },
+            "Maintenance arguments must never contain shell operators"
+        )
+        try expect(
+            tasks.allSatisfy { !$0.command.requiresAdministrator },
+            "The default workflow must not request administrator access"
+        )
+    }),
+    ("Mac optimizer keeps running after an individual task fails", {
+        let runner = RecordingMaintenanceCommandRunner(statuses: [.succeeded, .failed(7), .succeeded])
+        let results = MacOptimizer(commandRunner: runner).run()
+
+        try expect(results.count == 3, "Every reviewed maintenance task must produce a receipt")
+        try expect(results.map(\.outcome) == [.applied, .failed, .applied], "A failed task must not stop later work")
+        try expect(runner.commands == MacOptimizationCatalog.defaultTasks.map(\.command), "Only catalog commands may run")
+    }),
+    ("Mac optimizer reports an unavailable executable without launching it", {
+        let runner = RecordingMaintenanceCommandRunner(statuses: [.unavailable, .succeeded, .succeeded])
+        let results = MacOptimizer(commandRunner: runner).run()
+        try expect(results.first?.outcome == .unavailable, "Missing system tools must be reported honestly")
+        try expect(results.count == 3, "An unavailable tool must not block the workflow")
+    }),
+    ("System maintenance runner refuses commands outside the reviewed catalog", {
+        let status = SystemMaintenanceCommandRunner().run(MaintenanceCommand(
+            executablePath: "/usr/bin/true",
+            arguments: [],
+            timeoutSeconds: 1
+        ))
+        try expect(status == .unavailable, "Even a harmless executable must be rejected when it is not catalogued")
     }),
     ("Archive reminder state represents scan and read-only result phases", {
         try withTemporaryHome { home in
@@ -2557,6 +2560,20 @@ private final class RecordingApplicationChecker: ApplicationActivityChecking, @u
         defer { lock.unlock() }
         checkedBundleIDs.append(bundleIdentifier)
         return responses.isEmpty ? false : responses.removeFirst()
+    }
+}
+
+private final class RecordingMaintenanceCommandRunner: MaintenanceCommandRunning, @unchecked Sendable {
+    private var statuses: [MaintenanceCommandStatus]
+    private(set) var commands: [MaintenanceCommand] = []
+
+    init(statuses: [MaintenanceCommandStatus]) {
+        self.statuses = statuses
+    }
+
+    func run(_ command: MaintenanceCommand) -> MaintenanceCommandStatus {
+        commands.append(command)
+        return statuses.isEmpty ? .failed(-1) : statuses.removeFirst()
     }
 }
 

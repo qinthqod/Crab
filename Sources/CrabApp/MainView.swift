@@ -80,7 +80,7 @@ struct MainView: View {
         case .archive:
             model.scanProjects()
         case .optimizer:
-            model.runtimeOptimizer.refresh()
+            break
         }
     }
 
@@ -118,7 +118,7 @@ struct MainView: View {
 
     private var isLoading: Bool {
         if model.mode == .cache, case .loading = model.state { return true }
-        if model.mode == .optimizer, model.runtimeOptimizer.state == .loading { return true }
+        if model.mode == .optimizer, case .running = model.runtimeOptimizer.state { return true }
         return false
     }
 

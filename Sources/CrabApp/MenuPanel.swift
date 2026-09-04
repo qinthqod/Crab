@@ -37,10 +37,9 @@ struct MenuPanel: View {
 
             Button {
                 model.setMode(.optimizer)
-                model.runtimeOptimizer.refresh(force: true)
                 showMainWindow()
             } label: {
-                Label("查看运行占用…", systemImage: "memorychip")
+                Label("运行优化…", systemImage: "sparkles")
             }
         }
 

@@ -5,6 +5,21 @@ All notable changes to Crab are documented here. This project follows
 
 ## Unreleased
 
+## [0.2.0] - 2026-09-04
+
+### Changed
+
+- Replaced the AI-app memory snapshot with an explicit whole-Mac Runtime
+  Optimization workflow. It now refreshes Quick Look, app associations, and
+  Finder only after the user clicks Start, shows animated task progress and
+  per-task receipts, and never deletes files or closes third-party apps.
+
+### Security
+
+- Runtime Optimization uses one reviewed, timeout-bounded process boundary with
+  fixed system executables and arguments; shells, administrator access, and
+  user-provided commands remain unavailable.
+
 ## [0.1.2] - 2026-09-04
 
 ### Changed
