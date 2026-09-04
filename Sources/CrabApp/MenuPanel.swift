@@ -1,4 +1,5 @@
 import AppKit
+import CrabAppSupport
 import SwiftUI
 
 struct MenuPanel: View {
@@ -33,7 +34,7 @@ struct MenuPanel: View {
                 model.setMode(.archive)
                 showMainWindow()
             } label: {
-                Label("项目清理…", systemImage: "folder.badge.clock")
+                Label("项目清理…", systemImage: CrabMenuSymbols.projectCleanup)
             }
 
             Button {

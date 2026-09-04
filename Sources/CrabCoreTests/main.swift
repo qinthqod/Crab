@@ -2,6 +2,7 @@ import CrabCore
 import CrabArchive
 import CrabCLI
 import CrabAppSupport
+import AppKit
 import Darwin
 import Foundation
 
@@ -19,6 +20,16 @@ private func expect(
 }
 
 private let tests: [(String, () throws -> Void)] = [
+    ("Project cleanup menu uses an available folder cleanup symbol", {
+        try expect(
+            CrabMenuSymbols.projectCleanup == "folder.badge.minus",
+            "Project cleanup must use the stable folder cleanup symbol"
+        )
+        try expect(
+            NSImage(systemSymbolName: CrabMenuSymbols.projectCleanup, accessibilityDescription: nil) != nil,
+            "The project cleanup menu symbol must exist on the supported macOS version"
+        )
+    }),
     ("Version identifies the 0.2.2 release", {
         try expect(
             CrabCore.version == "0.2.2",
