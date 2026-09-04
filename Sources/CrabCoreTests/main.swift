@@ -2481,6 +2481,33 @@ private let tests: [(String, () throws -> Void)] = [
         try expect(optionalResult?.taskID == .dock, "The selected optional task must produce its own receipt")
         try expect(runner.commands == MacOptimizationCatalog.optionalTasks.filter { $0.id == .dock }.map(\.command), "Only the exact selected optional command may run")
     }),
+    ("Runtime optimization report updates optional receipts and ejected images", {
+        let image = MountedDiskImage(
+            imageURL: URL(fileURLWithPath: "/Users/test/Downloads/Fixture.dmg"),
+            mountURL: URL(fileURLWithPath: "/Volumes/Fixture", isDirectory: true),
+            deviceIdentifier: "/dev/disk11s1"
+        )
+        let snapshot = MacRuntimeSnapshot(
+            diskAvailableBytes: 100_000_000_000,
+            diskTotalBytes: 500_000_000_000,
+            memoryPressure: .normal,
+            swapUsedBytes: 0,
+            uptime: 86_400,
+            thermalState: .nominal,
+            processes: [],
+            mountedDiskImages: [image]
+        )
+        var report = RuntimeOptimizationReport(
+            diagnosis: MacRuntimeDiagnosisEvaluator.evaluate(snapshot),
+            automaticResults: []
+        )
+
+        report.recordOptionalResult(MacOptimizationResult(taskID: .dock, outcome: .applied))
+        report.recordEjectedImage(image)
+
+        try expect(report.optionalResults[.dock]?.outcome == .applied, "The latest optional action receipt must remain visible")
+        try expect(report.visibleMountedDiskImages.isEmpty, "A successfully ejected image must leave the visible review list")
+    }),
     ("System maintenance runner refuses commands outside the reviewed catalog", {
         let status = SystemMaintenanceCommandRunner().run(MaintenanceCommand(
             executablePath: "/usr/bin/true",

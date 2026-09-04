@@ -410,3 +410,33 @@ private struct NativeProcessCounter {
     let cpuNanoseconds: UInt64
     let residentBytes: UInt64
 }
+
+public struct RuntimeOptimizationReport: Equatable, Sendable {
+    public let diagnosis: MacRuntimeDiagnosis
+    public let automaticResults: [MacOptimizationResult]
+    public private(set) var optionalResults: [MacOptimizationTaskID: MacOptimizationResult]
+    private var ejectedImageIDs: Set<URL>
+
+    public var visibleMountedDiskImages: [MountedDiskImage] {
+        diagnosis.snapshot.mountedDiskImages.filter { !ejectedImageIDs.contains($0.id) }
+    }
+
+    public init(
+        diagnosis: MacRuntimeDiagnosis,
+        automaticResults: [MacOptimizationResult],
+        optionalResults: [MacOptimizationTaskID: MacOptimizationResult] = [:]
+    ) {
+        self.diagnosis = diagnosis
+        self.automaticResults = automaticResults
+        self.optionalResults = optionalResults
+        ejectedImageIDs = []
+    }
+
+    public mutating func recordOptionalResult(_ result: MacOptimizationResult) {
+        optionalResults[result.taskID] = result
+    }
+
+    public mutating func recordEjectedImage(_ image: MountedDiskImage) {
+        ejectedImageIDs.insert(image.id)
+    }
+}
