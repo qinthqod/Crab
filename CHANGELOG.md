@@ -5,6 +5,8 @@ All notable changes to Crab are documented here. This project follows
 
 ## Unreleased
 
+## [0.1.2] - 2026-09-04
+
 ### Changed
 
 - The primary manual installation artifact is now a macOS disk image with a
