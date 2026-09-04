@@ -13,8 +13,11 @@ existing in-app update format.
 - Users install Crab by dragging `Crab.app` onto `Applications`.
 - `Crab-<version>-macOS-<architecture>.zip` remains available for the existing
   in-app updater and is not the preferred manual-install artifact.
+- `update.json` is a small, versioned Release manifest used by the in-app
+  updater without consuming GitHub's anonymous REST API quota. It identifies
+  only the exact repository ZIP, size, and SHA-256 digest.
 - The application in both artifacts is the same verified, ad-hoc-signed bundle.
-- `SHA256SUMS.txt` contains SHA-256 entries for both the DMG and ZIP.
+- `SHA256SUMS.txt` contains SHA-256 entries for the DMG, ZIP, and manifest.
 
 ## Safety Boundaries
 
@@ -35,5 +38,6 @@ bash scripts/test-release-package.sh
 ```
 
 The verification must mount the DMG read-only, validate its exact top-level
-layout and link target, verify the embedded app signature, confirm the ZIP is
-still present, and check both checksum entries.
+layout and link target, verify the embedded app signature, confirm the ZIP and
+manifest are present, validate every manifest field, and check all checksum
+entries.

@@ -5,6 +5,16 @@ All notable changes to Crab are documented here. This project follows
 
 ## Unreleased
 
+## [0.2.1] - 2026-09-04
+
+### Fixed
+
+- Update checks now use a versioned manifest attached to the latest official
+  GitHub Release and fall back to it when the anonymous GitHub API is
+  rate-limited.
+- Release packaging verifies the manifest version, asset URL, size, and SHA-256
+  digest before publication.
+
 ## [0.2.0] - 2026-09-04
 
 ### Changed

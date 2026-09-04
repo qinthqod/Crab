@@ -19,9 +19,9 @@ private func expect(
 }
 
 private let tests: [(String, () throws -> Void)] = [
-    ("Version identifies the 0.2.0 release", {
+    ("Version identifies the 0.2.1 release", {
         try expect(
-            CrabCore.version == "0.2.0",
+            CrabCore.version == "0.2.1",
             "Expected release version, got \(CrabCore.version)"
         )
     }),
@@ -165,6 +165,63 @@ private let tests: [(String, () throws -> Void)] = [
                 architecture: "arm64"
             ) == .unavailable,
             "An asset outside the official GitHub repository must fail closed"
+        )
+    }),
+    ("Crab update checker falls back from the rate-limited API to the release manifest", {
+        let apiURL = URL(string: "https://api.github.com/repos/qinthqod/Crab/releases?per_page=5")!
+        try expect(
+            CrabAppUpdateChecker.feedURLs(primary: apiURL) == [
+                apiURL,
+                URL(string: "https://github.com/qinthqod/Crab/releases/latest/download/update.json")!,
+            ],
+            "The public release manifest must be tried after the anonymous API"
+        )
+        try expect(
+            CrabAppUpdateChecker.feedURLs(primary: URL(string: "https://example.com/update.json")!).isEmpty,
+            "Untrusted update feeds must fail closed"
+        )
+    }),
+    ("Crab update checker accepts the static release manifest format", {
+        let manifest = Data(#"""
+        {
+            "version": "v0.2.1",
+            "release_url": "https://github.com/qinthqod/Crab/releases/tag/v0.2.1",
+            "assets": [{
+                "name": "Crab-0.2.1-macOS-arm64.zip",
+                "state": "uploaded",
+                "content_type": "application/zip",
+                "size": 3477677,
+                "digest": "sha256:a0907cb3d1a82d78033793ec63cbfdee5fd7d110e7dd5b165fc85c449a777f62",
+                "browser_download_url": "https://github.com/qinthqod/Crab/releases/download/v0.2.1/Crab-0.2.1-macOS-arm64.zip"
+            }]
+        }
+        """#.utf8)
+        try expect(
+            CrabAppUpdateChecker.evaluate(
+                currentVersion: "0.1.1",
+                releaseData: manifest,
+                architecture: "arm64"
+            ) == .available(CrabAppUpdateOffer(
+                latestVersion: "v0.2.1",
+                releaseURL: URL(string: "https://github.com/qinthqod/Crab/releases/tag/v0.2.1")!,
+                assetURL: URL(string: "https://github.com/qinthqod/Crab/releases/download/v0.2.1/Crab-0.2.1-macOS-arm64.zip")!,
+                assetName: "Crab-0.2.1-macOS-arm64.zip",
+                assetSize: 3_477_677,
+                sha256: "a0907cb3d1a82d78033793ec63cbfdee5fd7d110e7dd5b165fc85c449a777f62"
+            )),
+            "The signed static manifest must produce the same verified offer as the API"
+        )
+        try expect(
+            CrabAppUpdateChecker.evaluateFeeds(
+                currentVersion: "0.1.1",
+                releaseDataCandidates: [Data("rate limited".utf8), manifest],
+                architecture: "arm64"
+            ) == CrabAppUpdateChecker.evaluate(
+                currentVersion: "0.1.1",
+                releaseData: manifest,
+                architecture: "arm64"
+            ),
+            "An unusable primary response must not prevent a valid manifest fallback"
         )
     }),
     ("Crab update digest verifies SHA-256 without loading an archive contract", {

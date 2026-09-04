@@ -24,11 +24,11 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.2.0</string>
+    <string>0.2.1</string>
     <key>CFBundleVersion</key>
-    <string>4</string>
+    <string>5</string>
     <key>CrabUpdateFeedURL</key>
-    <string>https://api.github.com/repos/qinthqod/Crab/releases?per_page=5</string>
+    <string>https://github.com/qinthqod/Crab/releases/latest/download/update.json</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
     <key>LSMinimumSystemVersion</key>

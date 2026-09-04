@@ -40,38 +40,60 @@ public enum CrabAppUpdateStatus: Equatable, Sendable {
 public struct CrabAppUpdateChecker: Sendable {
     private static let maximumFeedBytes = 256 * 1_024
     private static let maximumAssetBytes: Int64 = 250 * 1_024 * 1_024
+    private static let releaseManifestURL = URL(
+        string: "https://github.com/qinthqod/Crab/releases/latest/download/update.json"
+    )!
 
     public init() {}
 
     public func check(currentVersion: String, feedURL: URL?) async -> CrabAppUpdateStatus {
-        guard let feedURL, Self.isTrustedFeedURL(feedURL) else { return .unavailable }
+        guard let feedURL else { return .unavailable }
+        let feedURLs = Self.feedURLs(primary: feedURL)
+        guard !feedURLs.isEmpty else { return .unavailable }
 
-        var request = URLRequest(url: feedURL)
-        request.timeoutInterval = 8
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 8
+        configuration.timeoutIntervalForResource = 10
+        let session = URLSession(configuration: configuration)
+        var releaseDataCandidates: [Data] = []
 
-        do {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 8
-            configuration.timeoutIntervalForResource = 10
-            let session = URLSession(configuration: configuration)
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode),
-                  http.url?.scheme == "https",
-                  http.url?.host?.lowercased() == "api.github.com",
-                  data.count <= Self.maximumFeedBytes
-            else { return .failed }
+        for candidate in feedURLs {
+            var request = URLRequest(url: candidate)
+            request.timeoutInterval = 8
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+            request.setValue("Crab/\(currentVersion)", forHTTPHeaderField: "User-Agent")
 
-            return Self.evaluate(
-                currentVersion: currentVersion,
-                releaseData: data,
-                architecture: Self.currentArchitecture
-            )
-        } catch {
-            return .failed
+            do {
+                let (data, response) = try await session.data(for: request)
+                guard let http = response as? HTTPURLResponse,
+                      (200..<300).contains(http.statusCode),
+                      Self.isTrustedResponseURL(http.url, requestedURL: candidate),
+                      data.count <= Self.maximumFeedBytes
+                else { continue }
+
+                releaseDataCandidates.append(data)
+                let status = Self.evaluateFeeds(
+                    currentVersion: currentVersion,
+                    releaseDataCandidates: releaseDataCandidates,
+                    architecture: Self.currentArchitecture
+                )
+                if status != .unavailable { return status }
+            } catch {
+                continue
+            }
         }
+        return releaseDataCandidates.isEmpty ? .failed : .unavailable
+    }
+
+    public static func feedURLs(primary: URL) -> [URL] {
+        guard isTrustedFeedURL(primary) else { return [] }
+        if primary.scheme == "https",
+           primary.host?.lowercased() == "api.github.com",
+           primary.path == "/repos/qinthqod/Crab/releases" {
+            return [primary, releaseManifestURL]
+        }
+        return [primary]
     }
 
     public static func evaluate(
@@ -100,6 +122,22 @@ public struct CrabAppUpdateChecker: Sendable {
             return .available(offer)
         }
         return foundNewerRelease ? .unavailable : .upToDate
+    }
+
+    public static func evaluateFeeds(
+        currentVersion: String,
+        releaseDataCandidates: [Data],
+        architecture: String = currentArchitecture
+    ) -> CrabAppUpdateStatus {
+        for data in releaseDataCandidates {
+            let status = evaluate(
+                currentVersion: currentVersion,
+                releaseData: data,
+                architecture: architecture
+            )
+            if status != .unavailable { return status }
+        }
+        return .unavailable
     }
 
     public static var currentArchitecture: String {
@@ -157,9 +195,21 @@ public struct CrabAppUpdateChecker: Sendable {
     }
 
     private static func isTrustedFeedURL(_ url: URL) -> Bool {
-        url.scheme == "https"
-            && url.host?.lowercased() == "api.github.com"
-            && url.path == "/repos/qinthqod/Crab/releases"
+        guard url.scheme == "https" else { return false }
+        if url.host?.lowercased() == "api.github.com" {
+            return url.path == "/repos/qinthqod/Crab/releases"
+        }
+        return url == releaseManifestURL
+    }
+
+    private static func isTrustedResponseURL(_ url: URL?, requestedURL: URL) -> Bool {
+        guard let url, url.scheme == "https" else { return false }
+        if requestedURL.host?.lowercased() == "api.github.com" {
+            return url.host?.lowercased() == "api.github.com"
+                && url.path == "/repos/qinthqod/Crab/releases"
+        }
+        return (url == releaseManifestURL)
+            || url.host?.lowercased() == "release-assets.githubusercontent.com"
     }
 
     private static func isTrustedReleaseURL(_ url: URL) -> Bool {
