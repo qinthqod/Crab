@@ -5,6 +5,19 @@ All notable changes to Crab are documented here. This project follows
 
 ## Unreleased
 
+### Added
+
+- Runtime Optimization now reports local disk, memory-pressure, swap, uptime,
+  thermal, sustained-process, and mounted-disk-image findings before showing
+  maintenance results.
+- Finder and Dock refreshes are explicit optional actions. Mounted disk images
+  can be ejected only after confirmation and a fresh identity check.
+
+### Changed
+
+- Automatic Runtime Optimization is limited to reviewed Quick Look and app
+  association maintenance; it never refreshes Finder or Dock automatically.
+
 ## [0.2.2] - 2026-09-04
 
 ### Fixed

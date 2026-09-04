@@ -35,9 +35,11 @@ and all available versions.
   desktop and command-line applications.
 - **Application Management** — shows installed and running AI tools, recent use,
   available local usage metrics, and safe app-only uninstall.
-- **Runtime Optimization** — runs an on-demand, reviewed set of whole-Mac
-  maintenance tasks for Quick Look, app associations, and Finder. It never
-  deletes files or closes third-party applications.
+- **Runtime Optimization** — checks whole-Mac disk, memory pressure, swap,
+  uptime, thermal state, and sustained process load, then runs reviewed Quick
+  Look and app-association maintenance. Finder and Dock refreshes stay optional;
+  mounted disk images can be ejected only after confirmation. It never deletes
+  files or automatically closes third-party applications.
 - **Project Cleanup** — automatically discovers projects, associates them with AI
   applications, and lets the user move any selected project to Trash after a
   second confirmation.
