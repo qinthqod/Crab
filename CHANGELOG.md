@@ -16,6 +16,13 @@ All notable changes to Crab are documented here. This project follows
 - Added an on-demand, read-only Runtime Optimization page and menu-bar entry for
   reviewing supported AI desktop app process-tree memory without closing,
   pausing, or terminating applications and without modifying files.
+- Added project search, inactive/large/recent filters, activity/size sorting,
+  and select-all limited to the currently visible project results.
+- Added last-scan details on the cache home page and separated immediately
+  cleanable cache from cache blocked while its owning application is running.
+- Reorganized repository documentation and removed the obsolete web prototype
+  so the native macOS application, safety rules, and release tooling are easier
+  to review.
 
 ## [0.1.1] - 2026-09-02
 
