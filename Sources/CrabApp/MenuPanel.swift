@@ -40,7 +40,7 @@ struct MenuPanel: View {
                 model.runtimeOptimizer.refresh(force: true)
                 showMainWindow()
             } label: {
-                Label("优化运行内存…", systemImage: "memorychip")
+                Label("查看运行占用…", systemImage: "memorychip")
             }
         }
 

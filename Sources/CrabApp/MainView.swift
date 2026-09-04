@@ -211,8 +211,8 @@ struct ScanSafetyFooter: View {
             )
         case .optimizer:
             CrabL10n.text(
-                "只向明确选择的 AI 应用发送标准退出请求；不会强制退出或修改任何文件",
-                "Only selected AI apps receive a standard quit request; Crab never force-quits or changes files"
+                "只读查看 AI 应用的运行占用；不会关闭、暂停应用或修改任何文件",
+                "Read-only AI app usage overview; Crab never closes, pauses, or modifies applications"
             )
         }
     }

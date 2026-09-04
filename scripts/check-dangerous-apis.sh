@@ -42,14 +42,14 @@ fi
 
 if command -v rg >/dev/null 2>&1; then
   optimizer_forbidden_matches() {
-    rg -n 'forceTerminate|(^|[^A-Za-z.])kill\(|Process\(' \
+    rg -n '\.terminate\(|forceTerminate|(^|[^A-Za-z.])kill\(|Process\(' \
       Sources/CrabAppSupport/AIOptimization.swift \
       Sources/CrabApp/RuntimeOptimizerModel.swift \
       Sources/CrabApp/RuntimeOptimizerView.swift
   }
 else
   optimizer_forbidden_matches() {
-    grep -nEH 'forceTerminate|(^|[^A-Za-z.])kill\(|Process\(' \
+    grep -nEH '\.terminate\(|forceTerminate|(^|[^A-Za-z.])kill\(|Process\(' \
       Sources/CrabAppSupport/AIOptimization.swift \
       Sources/CrabApp/RuntimeOptimizerModel.swift \
       Sources/CrabApp/RuntimeOptimizerView.swift
@@ -57,13 +57,7 @@ else
 fi
 
 if optimizer_forbidden_matches; then
-  echo "Runtime optimization must not force-terminate processes or launch commands." >&2
-  exit 1
-fi
-
-optimizer_graceful_termination_count="$(count_matches '\.terminate\(\)' Sources/CrabApp/RuntimeOptimizerModel.swift)"
-if [ "$optimizer_graceful_termination_count" != "1" ]; then
-  echo "The reviewed runtime optimizer must keep exactly one standard app termination boundary." >&2
+  echo "Runtime optimization must remain read-only and never terminate processes or launch commands." >&2
   exit 1
 fi
 

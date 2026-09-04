@@ -2,26 +2,25 @@
 
 ## Objective
 
-Help users reclaim active memory held by supported AI desktop applications
-without pretending that macOS needs a generic "memory cleaner." Crab measures
-the running applications it already knows, explains their footprint, and lets
-the user explicitly request a normal application quit.
+Help users understand active memory held by supported AI desktop applications
+without pretending that macOS needs a generic "memory cleaner" or that Crab can
+force another application to release private memory while it remains running.
+Crab measures the running applications it already knows and explains their
+point-in-time footprint through a read-only view.
 
 ## User Flow
 
 1. Opening **运行优化 / Optimize** starts a lightweight process snapshot.
 2. The result lists only supported AI desktop applications that are currently
    running, ordered by estimated resident memory.
-3. No application is selected by default. The user selects one or more rows.
-4. Crab shows a second confirmation naming the selected applications and the
-   estimated memory they currently hold.
-5. Crab revalidates each bundle identifier and process identifier, then sends
-   the standard macOS terminate request. Applications may show their own save
-   dialogs or refuse to quit.
-6. Crab refreshes the snapshot and reports requests and skips separately.
+3. Each row shows the application, running duration when available, and the
+   estimated resident memory held by its process tree.
+4. The page explains that the snapshot is read-only and offers only refresh.
+5. Crab never presents a selection, quit, pause, kill, or fake memory-release
+   action.
 
-The menu-bar menu exposes **优化运行内存… / Optimize Memory…**. It opens this
-same review flow and never quits applications immediately from the menu.
+The menu-bar menu exposes **查看运行占用… / View Runtime Usage…** and opens the
+same read-only view.
 
 ## Measurement
 
@@ -38,22 +37,19 @@ same review flow and never quits applications immediately from the menu.
 ## Safety Boundaries
 
 - Scope is limited to exact bundle identifiers in `HarnessCatalog`.
-- Selection always starts empty and cannot contain an app outside the snapshot.
-- Execution plans expire after 30 seconds and bind exact process identifiers.
-- A changed, exited, or relaunched process is skipped.
-- Crab never uses `kill -9`, `forceTerminate`, `purge`, administrator access, or
-  a privileged helper.
-- Crab never terminates itself, system services, security software, or unknown
-  processes.
+- Crab never uses `terminate`, `kill`, `forceTerminate`, `purge`, process
+  suspension, administrator access, or a privileged helper for this feature.
+- Crab never closes or ends supported apps, their child processes, itself,
+  system services, security software, or unknown processes.
 - No files, caches, conversations, projects, models, credentials, or settings
   are changed by Runtime Optimization.
 - Optimization runs only when requested and has no background polling cost.
 
 ## Verification
 
-- Unit tests cover process-tree accounting, exclusion of unrelated processes,
-  zero default selection, stale-PID refusal, plan expiry, and graceful-request
-  receipts.
+- Unit tests cover process-tree accounting and exclusion of unrelated processes.
+- The dangerous-API gate fails if runtime optimization introduces termination,
+  process launching, or force-quit APIs.
 - App tests and smoke tests prove the new page does not block launch or the main
   actor.
 - The menu item opens the review page instead of executing immediately.

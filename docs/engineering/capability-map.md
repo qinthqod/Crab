@@ -12,7 +12,7 @@
 | `archive-trash-execution` | Convert explicit project selections into expiring plans, revalidate them, and move them to Trash after second confirmation; six-month and large-project signals remain labels only | `project-inventory`, `project-attribution`, `trash-execution` |
 | `project-inventory` | Automatically discover local projects from metadata-only directory markers after explicit Project Cleanup navigation | `harness-inventory` |
 | `project-attribution` | Associate each discovered project with installed AI applications using explicit project-local markers | `project-inventory`, `harness-catalog` |
-| `runtime-optimization` | Measure running supported AI desktop app process trees and send only user-confirmed standard quit requests | `harness-catalog` |
+| `runtime-optimization` | Read-only measurement of running supported AI desktop app process trees; never closes, pauses, or terminates apps | `harness-catalog` |
 | `audit-restore` | Store content-free receipts and restore without overwriting an existing path | `trash-execution` |
 | `cli-surface` | Developer-facing scan, inspect, plan, dry-run, rules, and history commands | `safe-scan`, `immutable-plan`, `audit-restore` |
 | `mac-app` | Native SwiftUI cache cleanup and opt-in archive-suggestion experience | `safe-scan`, `immutable-plan`, `archive-trash-execution`, `audit-restore` |

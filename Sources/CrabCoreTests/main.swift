@@ -2214,86 +2214,6 @@ private let tests: [(String, () throws -> Void)] = [
             "The read-only process sampler should include the current test process"
         )
     }),
-    ("Runtime optimization starts with zero selection", {
-        let snapshot = AIOptimizationSnapshot(applications: [
-            RunningAIApplication(
-                appID: "com.openai.chat",
-                displayName: "ChatGPT",
-                processIdentifiers: [100],
-                residentBytes: 512,
-                launchedAt: nil
-            ),
-        ])
-        var selection = AIOptimizationSelection(snapshot: snapshot)
-        try expect(selection.selectedAppIDs.isEmpty, "No running app may be selected automatically")
-        selection.setSelected("unknown.app", selected: true)
-        try expect(selection.selectedAppIDs.isEmpty, "Unknown apps cannot enter optimization selection")
-        selection.setSelected("com.openai.chat", selected: true)
-        try expect(selection.selectedAppIDs == ["com.openai.chat"], "An explicit visible selection should be retained")
-    }),
-    ("Runtime optimization refuses a relaunched process and requests only graceful termination", {
-        let scannedAt = Date(timeIntervalSince1970: 2_000_000_000)
-        let snapshot = AIOptimizationSnapshot(applications: [
-            RunningAIApplication(
-                appID: "com.openai.chat",
-                displayName: "ChatGPT",
-                processIdentifiers: [100],
-                residentBytes: 1_024,
-                launchedAt: nil
-            ),
-            RunningAIApplication(
-                appID: "com.anthropic.claudefordesktop",
-                displayName: "Claude",
-                processIdentifiers: [200],
-                residentBytes: 2_048,
-                launchedAt: nil
-            ),
-        ], capturedAt: scannedAt)
-        let plan = try AIOptimizationPlanBuilder().build(
-            snapshot: snapshot,
-            selectedAppIDs: ["com.openai.chat", "com.anthropic.claudefordesktop"],
-            now: scannedAt
-        )
-        let controller = RecordingAIApplicationTerminator(running: [
-            "com.openai.chat": [101],
-            "com.anthropic.claudefordesktop": [200],
-        ])
-        let receipt = try AIOptimizationExecutor(controller: controller).execute(
-            plan: plan,
-            now: scannedAt.addingTimeInterval(1)
-        )
-
-        try expect(controller.requests == ["com.anthropic.claudefordesktop": [200]], "A changed PID must never receive a termination request")
-        try expect(receipt.requestedAppIDs == ["com.anthropic.claudefordesktop"], "The unchanged app should receive a standard quit request")
-        try expect(receipt.skippedAppIDs == ["com.openai.chat"], "The relaunched app should be reported as skipped")
-        try expect(receipt.estimatedResidentBytes == 2_048, "The receipt may estimate only accepted requests")
-    }),
-    ("Runtime optimization plans expire quickly", {
-        let scannedAt = Date(timeIntervalSince1970: 2_000_000_000)
-        let snapshot = AIOptimizationSnapshot(applications: [
-            RunningAIApplication(
-                appID: "com.openai.chat",
-                displayName: "ChatGPT",
-                processIdentifiers: [100],
-                residentBytes: 512,
-                launchedAt: nil
-            ),
-        ], capturedAt: scannedAt)
-        let plan = try AIOptimizationPlanBuilder().build(
-            snapshot: snapshot,
-            selectedAppIDs: ["com.openai.chat"],
-            now: scannedAt
-        )
-        let controller = RecordingAIApplicationTerminator(running: ["com.openai.chat": [100]])
-
-        try expectThrows("An expired optimizer plan must fail closed") {
-            _ = try AIOptimizationExecutor(controller: controller).execute(
-                plan: plan,
-                now: scannedAt.addingTimeInterval(31)
-            )
-        }
-        try expect(controller.requests.isEmpty, "An expired plan must not request termination")
-    }),
     ("Archive reminder state represents scan and read-only result phases", {
         try withTemporaryHome { home in
             let scannedAt = Date(timeIntervalSince1970: 2_000_000_000)
@@ -2637,24 +2557,6 @@ private final class RecordingApplicationChecker: ApplicationActivityChecking, @u
         defer { lock.unlock() }
         checkedBundleIDs.append(bundleIdentifier)
         return responses.isEmpty ? false : responses.removeFirst()
-    }
-}
-
-private final class RecordingAIApplicationTerminator: AIApplicationTerminationControlling, @unchecked Sendable {
-    private let running: [String: Set<Int32>]
-    private(set) var requests: [String: Set<Int32>] = [:]
-
-    init(running: [String: Set<Int32>]) {
-        self.running = running
-    }
-
-    func runningProcessIdentifiers(for appID: String) -> Set<Int32>? {
-        running[appID]
-    }
-
-    func requestGracefulTermination(appID: String, processIdentifiers: Set<Int32>) -> Bool {
-        requests[appID] = processIdentifiers
-        return true
     }
 }
 
