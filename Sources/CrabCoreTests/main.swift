@@ -2351,6 +2351,60 @@ private let tests: [(String, () throws -> Void)] = [
         try expect(images.first?.mountURL.path == "/Volumes/Crab", "The exact volume mount must be retained")
         try expect(images.first?.imageURL.path == "/Users/test/Downloads/Crab.dmg", "The backing image must be retained for review")
     }),
+    ("Mounted disk image eject revalidates the exact reviewed identity", {
+        let reviewed = MountedDiskImage(
+            imageURL: URL(fileURLWithPath: "/Users/test/Downloads/Fixture.dmg"),
+            mountURL: URL(fileURLWithPath: "/Volumes/Fixture", isDirectory: true),
+            deviceIdentifier: "/dev/disk11s1"
+        )
+        let freshPlist: [String: Any] = [
+            "images": [[
+                "image-path": reviewed.imageURL.path,
+                "system-entities": [[
+                    "mount-point": reviewed.mountURL.path,
+                    "dev-entry": reviewed.deviceIdentifier,
+                ]],
+            ]],
+        ]
+        let freshData = try PropertyListSerialization.data(fromPropertyList: freshPlist, format: .xml, options: 0)
+        let volumeEjector = RecordingMountedVolumeEjector()
+        let ejector = MountedDiskImageEjector(
+            dataProvider: StaticMountedDiskImageDataProvider(data: freshData),
+            volumeEjector: volumeEjector
+        )
+
+        let outcome = ejector.eject(reviewed)
+
+        try expect(outcome == .ejected, "An unchanged reviewed image should be ejected")
+        try expect(volumeEjector.urls == [reviewed.mountURL], "Only the exact reviewed mount URL may cross the eject boundary")
+    }),
+    ("Mounted disk image eject fails closed when the device identity changes", {
+        let reviewed = MountedDiskImage(
+            imageURL: URL(fileURLWithPath: "/Users/test/Downloads/Fixture.dmg"),
+            mountURL: URL(fileURLWithPath: "/Volumes/Fixture", isDirectory: true),
+            deviceIdentifier: "/dev/disk11s1"
+        )
+        let changedPlist: [String: Any] = [
+            "images": [[
+                "image-path": reviewed.imageURL.path,
+                "system-entities": [[
+                    "mount-point": reviewed.mountURL.path,
+                    "dev-entry": "/dev/disk12s1",
+                ]],
+            ]],
+        ]
+        let changedData = try PropertyListSerialization.data(fromPropertyList: changedPlist, format: .xml, options: 0)
+        let volumeEjector = RecordingMountedVolumeEjector()
+        let ejector = MountedDiskImageEjector(
+            dataProvider: StaticMountedDiskImageDataProvider(data: changedData),
+            volumeEjector: volumeEjector
+        )
+
+        let outcome = ejector.eject(reviewed)
+
+        try expect(outcome == .changed, "Changed mount evidence must fail closed")
+        try expect(volumeEjector.urls.isEmpty, "No changed mount may reach the eject boundary")
+    }),
     ("System runtime collection stays bounded and consumes only local metadata", {
         let plist: [String: Any] = [
             "images": [[
@@ -2800,6 +2854,14 @@ private struct StaticMountedDiskImageDataProvider: MountedDiskImageDataProviding
 
     func mountedDiskImageData() -> Data? {
         data
+    }
+}
+
+private final class RecordingMountedVolumeEjector: MountedVolumeEjecting, @unchecked Sendable {
+    private(set) var urls: [URL] = []
+
+    func ejectVolume(at url: URL) throws {
+        urls.append(url)
     }
 }
 
