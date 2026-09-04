@@ -2263,6 +2263,94 @@ private let tests: [(String, () throws -> Void)] = [
         try expect(presence.phase == .mainWindow, "Crab must retain normal application presence")
         try expect(presence.isMenuBarVisible, "The menu icon must not depend on a minimization preference")
     }),
+    ("Runtime diagnosis keeps a healthy snapshot free of invented warnings", {
+        let snapshot = MacRuntimeSnapshot(
+            diskAvailableBytes: 200_000_000_000,
+            diskTotalBytes: 500_000_000_000,
+            memoryPressure: .normal,
+            swapUsedBytes: 0,
+            uptime: 3 * 86_400,
+            thermalState: .nominal,
+            processes: [],
+            mountedDiskImages: []
+        )
+
+        let diagnosis = MacRuntimeDiagnosisEvaluator.evaluate(snapshot)
+
+        try expect(diagnosis.level == .healthy, "Healthy evidence must stay healthy")
+        try expect(diagnosis.findings.isEmpty, "Healthy evidence must not create findings")
+        try expect(diagnosis.resourceHeavyProcesses.isEmpty, "Healthy evidence must not create process warnings")
+    }),
+    ("Runtime diagnosis derives critical conditions from fixed local thresholds", {
+        let snapshot = MacRuntimeSnapshot(
+            diskAvailableBytes: 4_000_000_000,
+            diskTotalBytes: 500_000_000_000,
+            memoryPressure: .critical,
+            swapUsedBytes: 12_000_000_000,
+            uptime: 16 * 86_400,
+            thermalState: .serious,
+            processes: [],
+            mountedDiskImages: []
+        )
+
+        let diagnosis = MacRuntimeDiagnosisEvaluator.evaluate(snapshot)
+        let findingIDs = Set(diagnosis.findings.map(\.id))
+
+        try expect(diagnosis.level == .critical, "Critical pressure must determine the overall level")
+        try expect(findingIDs.contains(.lowDiskSpace), "Critically low disk space must be identified")
+        try expect(findingIDs.contains(.memoryPressure), "Critical memory pressure must be identified")
+        try expect(findingIDs.contains(.thermalPressure), "Serious thermal pressure must be identified")
+        try expect(findingIDs.contains(.longUptime), "A 14-day uptime must be identified")
+    }),
+    ("Runtime diagnosis shows only the five most relevant heavy processes", {
+        let processes = (0 ..< 8).map { index in
+            MacRuntimeProcess(
+                name: "Process \(index)",
+                cpuPercent: Double(80 - index),
+                memoryBytes: UInt64(index + 1) * 500_000_000
+            )
+        }
+        let snapshot = MacRuntimeSnapshot(
+            diskAvailableBytes: 200_000_000_000,
+            diskTotalBytes: 500_000_000_000,
+            memoryPressure: .normal,
+            swapUsedBytes: 0,
+            uptime: 86_400,
+            thermalState: .nominal,
+            processes: processes,
+            mountedDiskImages: []
+        )
+
+        let diagnosis = MacRuntimeDiagnosisEvaluator.evaluate(snapshot)
+
+        try expect(diagnosis.resourceHeavyProcesses.count == 5, "Process details must stay bounded")
+        try expect(diagnosis.resourceHeavyProcesses.first?.name == "Process 0", "Sustained CPU must sort descending")
+        try expect(diagnosis.findings.contains(where: { $0.id == .resourcePressure }), "Heavy processes must create one aggregate finding")
+    }),
+    ("Mounted disk image parser accepts only exact image mounts under Volumes", {
+        let plist: [String: Any] = [
+            "images": [
+                [
+                    "image-path": "/Users/test/Downloads/Crab.dmg",
+                    "system-entities": [
+                        ["mount-point": "/Volumes/Crab", "dev-entry": "/dev/disk9s1"],
+                        ["dev-entry": "/dev/disk9"],
+                    ],
+                ],
+                [
+                    "image-path": "/tmp/untrusted.dmg",
+                    "system-entities": [["mount-point": "/", "dev-entry": "/dev/disk10s1"]],
+                ],
+            ],
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+
+        let images = MountedDiskImageParser.parse(data)
+
+        try expect(images.count == 1, "Unsafe or incomplete mount records must be rejected")
+        try expect(images.first?.mountURL.path == "/Volumes/Crab", "The exact volume mount must be retained")
+        try expect(images.first?.imageURL.path == "/Users/test/Downloads/Crab.dmg", "The backing image must be retained for review")
+    }),
     ("Mac optimizer exposes only the reviewed maintenance allowlist", {
         let tasks = MacOptimizationCatalog.defaultTasks
         try expect(
