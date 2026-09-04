@@ -2,7 +2,7 @@
 set -eu
 
 scan_roots="Sources/CrabCore Sources/CrabArchive Sources/CrabCLI Sources/CrabAppSupport Sources/CrabApp"
-dangerous_pattern='FileManager[^\n]*removeItem|\.trashItem|(^|[^A-Za-z.])(unlink|rmdir|remove|rename|system)\(|Process\('
+dangerous_pattern='FileManager[^\n]*removeItem|\.trashItem|unmountAndEjectDevice|(^|[^A-Za-z.])(unlink|rmdir|remove|rename|system)\(|Process\('
 
 count_matches() {
   pattern="$1"
@@ -23,6 +23,7 @@ if command -v rg >/dev/null 2>&1; then
       --glob '!HarnessUsage.swift' \
       --glob '!CrabAppInstaller.swift' \
       --glob '!MacOptimization.swift' \
+      --glob '!MountedDiskImageEjector.swift' \
       "$dangerous_pattern" $scan_roots
   }
 else
@@ -33,12 +34,19 @@ else
       ! -name 'HarnessUsage.swift' \
       ! -name 'CrabAppInstaller.swift' \
       ! -name 'MacOptimization.swift' \
+      ! -name 'MountedDiskImageEjector.swift' \
       -exec grep -nEH "$dangerous_pattern" {} +
   }
 fi
 
 if dangerous_matches; then
   echo "Dangerous filesystem or process API found outside a reviewed boundary." >&2
+  exit 1
+fi
+
+mounted_image_eject_count="$(count_matches 'NSWorkspace\.shared\.unmountAndEjectDevice' Sources/CrabAppSupport/MountedDiskImageEjector.swift)"
+if [ "$mounted_image_eject_count" != "1" ]; then
+  echo "The reviewed mounted-image eject boundary must contain exactly one system eject call." >&2
   exit 1
 fi
 
