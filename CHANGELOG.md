@@ -5,6 +5,15 @@ All notable changes to Crab are documented here. This project follows
 
 ## Unreleased
 
+## [0.2.2] - 2026-09-04
+
+### Fixed
+
+- Closing the main window now removes Crab from the Dock while keeping its
+  menu-bar icon and process available.
+- Reopening Crab from the menu bar restores the main window and normal Dock
+  presence; standard window minimization remains unchanged.
+
 ## [0.2.1] - 2026-09-04
 
 ### Fixed

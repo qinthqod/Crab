@@ -19,9 +19,9 @@ private func expect(
 }
 
 private let tests: [(String, () throws -> Void)] = [
-    ("Version identifies the 0.2.1 release", {
+    ("Version identifies the 0.2.2 release", {
         try expect(
-            CrabCore.version == "0.2.1",
+            CrabCore.version == "0.2.2",
             "Expected release version, got \(CrabCore.version)"
         )
     }),
