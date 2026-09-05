@@ -89,7 +89,7 @@ update_process_count="$(count_matches 'let process = Process\(\)' Sources/CrabAp
 usage_process_count="$(count_matches 'let process = Process\(\)' Sources/CrabAppSupport/HarnessUsage.swift)"
 app_update_process_count="$(count_matches 'let process = Process\(\)' Sources/CrabAppSupport/CrabAppInstaller.swift)"
 app_update_cleanup_count="$(count_matches 'FileManager\.default\.removeItem|manager\.removeItem' Sources/CrabAppSupport/CrabAppInstaller.swift)"
-if [ "$update_process_count" != "1" ] || [ "$usage_process_count" != "1" ] \
+if [ "$update_process_count" != "1" ] || [ "$usage_process_count" != "2" ] \
   || [ "$app_update_process_count" != "1" ] || [ "$app_update_cleanup_count" != "2" ]; then
   echo "Reviewed process boundaries changed; inspect Harness update and usage execution before release." >&2
   exit 1
