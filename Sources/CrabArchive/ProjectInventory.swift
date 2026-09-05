@@ -32,6 +32,18 @@ public struct ProjectInventoryItem: Identifiable, Equatable, Sendable {
 public enum ProjectCleanupBlockReason: Equatable, Sendable {
     case incompleteInspection
     case inspectionLimitReached
+    case symbolicLink
+    case protectedDirectory
+    case unsupportedEntry
+    case changedDuringInspection
+}
+
+public struct ProjectInventoryProgress: Equatable, Sendable {
+    public var discoveredEntryCount: Int = 0
+    public var inspectedEntryCount: Int = 0
+    public var inspectedProjectCount: Int = 0
+
+    public init() {}
 }
 
 public struct ProjectInventoryResult: Equatable, Sendable {
@@ -99,15 +111,15 @@ public enum ProjectInventoryVerificationError: Error, Equatable, CustomStringCon
 }
 
 public struct ProjectInventoryScanner: Sendable {
-    private let maxEntries: Int
-    private let maxDepth: Int
+    private let maxEntries: Int?
+    private let maxDepth: Int?
     private let inactivityDays: Int
-    private let maxProjectEntries: Int
-    private let maxInspectionEntries: Int
+    private let maxProjectEntries: Int?
+    private let maxInspectionEntries: Int?
 
     public init(
-        maxEntries: Int = 250_000, maxDepth: Int = 12, inactivityDays: Int = 180,
-        maxProjectEntries: Int = 250_000, maxInspectionEntries: Int = 2_000_000
+        maxEntries: Int? = nil, maxDepth: Int? = nil, inactivityDays: Int = 180,
+        maxProjectEntries: Int? = nil, maxInspectionEntries: Int? = nil
     ) {
         self.maxEntries = maxEntries
         self.maxDepth = maxDepth
@@ -121,10 +133,13 @@ public struct ProjectInventoryScanner: Sendable {
         rules: [ProjectApplicationRule],
         installedAppIDs: Set<String>,
         evidencedProjectURLsByAppID: [String: [URL]] = [:],
-        now: Date = Date()
+        now: Date = Date(),
+        onProgress: (@Sendable (ProjectInventoryProgress) -> Void)? = nil
     ) throws -> ProjectInventoryResult {
-        guard maxEntries > 0, maxDepth > 0, inactivityDays > 0,
-              maxProjectEntries > 0, maxInspectionEntries > 0 else {
+        // Interactive scans run to completion. Optional budgets remain available to
+        // callers that explicitly request bounded scans; they never authorize cleanup.
+        guard [maxEntries, maxDepth, maxProjectEntries, maxInspectionEntries]
+            .allSatisfy({ $0.map { $0 > 0 } ?? true }), inactivityDays > 0 else {
             throw ProjectInventoryScanError.invalidConfiguration
         }
 
@@ -133,7 +148,8 @@ public struct ProjectInventoryScanner: Sendable {
             return ProjectInventoryResult(scannedAt: now)
         }
 
-        var context = ScanContext(maxEntries: maxEntries)
+        var context = ScanContext(maxEntries: maxEntries, onProgress: onProgress)
+        context.reportProgress(force: true)
         for rootURL in rootURLs {
             let root = rootURL.standardizedFileURL
             var rootMetadata = stat()
@@ -165,6 +181,8 @@ public struct ProjectInventoryScanner: Sendable {
             )
         }
 
+        try Task.checkCancellation()
+        context.reportProgress(force: true)
         return ProjectInventoryResult(
             scannedAt: now,
             projects: context.projects,
@@ -276,70 +294,67 @@ public struct ProjectInventoryScanner: Sendable {
         now: Date,
         context: inout ScanContext
     ) throws {
-        try Task.checkCancellation()
-        guard depth <= maxDepth else {
-            context.discoveryWasLimited = true
-            return
-        }
-        guard context.seenDiscoveryPaths.insert(directory.path).inserted else { return }
-        guard !isProtectedMediaDirectory(directory, scanRoot: scanRoot) else { return }
-        let entries: [URL]
-        do {
-            entries = try FileManager.default.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: nil,
-                options: []
-            )
-        } catch {
-            context.skippedDirectoryCount += 1
-            return
-        }
+        // An explicit stack avoids call-stack growth when scanning deep project trees.
+        var pending: [(url: URL, depth: Int, isEntry: Bool)] = [(directory, depth, false)]
+        while let (directory, depth, isEntry) = pending.popLast() {
+            try Task.checkCancellation()
+            if isEntry {
+                try context.visit()
+                guard !shouldSkipDirectory(directory, scanRoot: scanRoot) else { continue }
+                var metadata = stat()
+                guard lstat(directory.path, &metadata) == 0,
+                      metadata.st_mode & S_IFMT == S_IFDIR,
+                      UInt64(metadata.st_dev) == rootDevice else { continue }
+            }
+            if let maxDepth, depth > maxDepth {
+                context.discoveryWasLimited = true
+                continue
+            }
+            guard context.seenDiscoveryPaths.insert(directory.path).inserted else { continue }
+            guard !isProtectedMediaDirectory(directory, scanRoot: scanRoot) else { continue }
+            let entries: [URL]
+            do {
+                entries = try FileManager.default.contentsOfDirectory(
+                    at: directory,
+                    includingPropertiesForKeys: nil,
+                    options: []
+                )
+            } catch {
+                context.skippedDirectoryCount += 1
+                continue
+            }
 
-        let names = Set(entries.map(\.lastPathComponent))
-        let matches = rules.filter { !names.isDisjoint(with: $0.markerNames) }
-        if depth > 0,
-           !matches.isEmpty,
-           hasProjectBoundary(in: names),
-           context.seenProjectPaths.insert(directory.path).inserted {
-            let primary = primaryRule(from: matches, entries: entries)
-            let totals = try summarizeProject(
-                directory,
-                scanRoot: scanRoot,
-                rootDevice: rootDevice,
-                context: &context
-            )
-            guard !totals.containsProtectedMedia else { return }
-            let cutoff = now.addingTimeInterval(-TimeInterval(inactivityDays) * 86_400)
-            context.projects.append(ProjectInventoryItem(
-                path: directory.standardizedFileURL,
-                identity: totals.identity,
-                primaryAppID: primary.appID,
-                relatedAppIDs: matches.map(\.appID).sorted(),
-                latestActivity: totals.latestActivity,
-                logicalBytes: totals.logicalBytes,
-                fileCount: totals.fileCount,
-                isInactive: !totals.inspectionIncomplete && totals.latestActivity < cutoff,
-                cleanupBlockReason: totals.cleanupBlockReason
-            ))
-        }
+            let names = Set(entries.map(\.lastPathComponent))
+            let matches = rules.filter { !names.isDisjoint(with: $0.markerNames) }
+            if depth > 0,
+               !matches.isEmpty,
+               hasProjectBoundary(in: names),
+               context.seenProjectPaths.insert(directory.path).inserted {
+                let primary = primaryRule(from: matches, entries: entries)
+                let totals = try summarizeProject(
+                    directory,
+                    scanRoot: scanRoot,
+                    rootDevice: rootDevice,
+                    context: &context
+                )
+                guard !totals.containsProtectedMedia else { continue }
+                let cutoff = now.addingTimeInterval(-TimeInterval(inactivityDays) * 86_400)
+                context.projects.append(ProjectInventoryItem(
+                    path: directory.standardizedFileURL,
+                    identity: totals.identity,
+                    primaryAppID: primary.appID,
+                    relatedAppIDs: matches.map(\.appID).sorted(),
+                    latestActivity: totals.latestActivity,
+                    logicalBytes: totals.logicalBytes,
+                    fileCount: totals.fileCount,
+                    isInactive: !totals.inspectionIncomplete && totals.latestActivity < cutoff,
+                    cleanupBlockReason: totals.cleanupBlockReason
+                ))
+            }
 
-        for entry in entries.sorted(by: { $0.path < $1.path }) {
-            try context.visit()
-            guard !shouldSkipDirectory(entry, scanRoot: scanRoot) else { continue }
-            var metadata = stat()
-            guard lstat(entry.path, &metadata) == 0,
-                  metadata.st_mode & S_IFMT == S_IFDIR,
-                  UInt64(metadata.st_dev) == rootDevice
-            else { continue }
-            try discoverProjects(
-                in: entry,
-                depth: depth + 1,
-                scanRoot: scanRoot,
-                rootDevice: rootDevice,
-                rules: rules,
-                now: now,
-                context: &context
-            )
+            for entry in entries.sorted(by: { $0.path > $1.path }) {
+                pending.append((entry, depth + 1, true))
+            }
         }
     }
 
@@ -477,10 +492,14 @@ public struct ProjectInventoryScanner: Sendable {
         var stack: [(URL, ArchiveFileIdentity)] = [(root, totals.identity)]
         var seenFiles = Set<ProjectFileKey>()
         var projectEntryCount = 0
+        defer {
+            context.inspectedProjectCount += 1
+            context.reportProgress()
+        }
 
         while let (directory, expectedIdentity) = stack.popLast() {
             try Task.checkCancellation()
-            guard context.inspectedEntryCount < maxInspectionEntries else {
+            if let maxInspectionEntries, context.inspectedEntryCount >= maxInspectionEntries {
                 totals.inspectionIncomplete = true
                 totals.inspectionLimitReached = true
                 return totals
@@ -489,7 +508,7 @@ public struct ProjectInventoryScanner: Sendable {
             guard lstat(directory.path, &current) == 0,
                   current.st_mode & S_IFMT == S_IFDIR,
                   ArchiveFileIdentity(metadata: current, kind: .directory) == expectedIdentity else {
-                totals.inspectionIncomplete = true
+                totals.block(.changedDuringInspection)
                 continue
             }
             let entries: [URL]
@@ -507,14 +526,15 @@ public struct ProjectInventoryScanner: Sendable {
 
             for entry in entries {
                 try Task.checkCancellation()
-                guard projectEntryCount < maxProjectEntries,
-                      context.inspectedEntryCount < maxInspectionEntries else {
+                if maxProjectEntries.map({ projectEntryCount >= $0 }) == true
+                    || maxInspectionEntries.map({ context.inspectedEntryCount >= $0 }) == true {
                     totals.inspectionIncomplete = true
                     totals.inspectionLimitReached = true
                     return totals
                 }
                 projectEntryCount += 1
                 context.inspectedEntryCount += 1
+                context.reportProgress()
                 var metadata = stat()
                 guard lstat(entry.path, &metadata) == 0,
                       UInt64(metadata.st_dev) == rootDevice
@@ -528,7 +548,7 @@ public struct ProjectInventoryScanner: Sendable {
                     if isProtectedMediaDirectory(entry, scanRoot: scanRoot) {
                         totals.containsProtectedMedia = true
                     } else if isProtectedContentDirectory(entry.lastPathComponent) {
-                        totals.inspectionIncomplete = true
+                        totals.block(.protectedDirectory)
                     } else {
                         stack.append((entry, ArchiveFileIdentity(metadata: metadata, kind: .directory)))
                     }
@@ -538,9 +558,11 @@ public struct ProjectInventoryScanner: Sendable {
                         totals.fileCount += 1
                         totals.logicalBytes += UInt64(max(0, metadata.st_size))
                     }
+                case S_IFLNK:
+                    totals.block(.symbolicLink)
                 default:
                     // Never follow links or silently approve an incompletely inspected target.
-                    totals.inspectionIncomplete = true
+                    totals.block(.unsupportedEntry)
                     continue
                 }
             }
@@ -612,19 +634,40 @@ public struct ProjectInventoryScanner: Sendable {
 }
 
 private struct ScanContext {
-    let maxEntries: Int
+    let maxEntries: Int?
+    var onProgress: (@Sendable (ProjectInventoryProgress) -> Void)? = nil
     var visitedEntryCount = 0
     var skippedDirectoryCount = 0
     var projects: [ProjectInventoryItem] = []
     var seenProjectPaths = Set<String>()
     var seenDiscoveryPaths = Set<String>()
     var inspectedEntryCount = 0
+    var inspectedProjectCount = 0
     var discoveryWasLimited = false
+    private var lastProgressTime: TimeInterval = 0
+
+    init(maxEntries: Int?, onProgress: (@Sendable (ProjectInventoryProgress) -> Void)? = nil) {
+        self.maxEntries = maxEntries
+        self.onProgress = onProgress
+    }
+
+    mutating func reportProgress(force: Bool = false) {
+        guard let onProgress else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        guard force || now - lastProgressTime >= 0.25 else { return }
+        lastProgressTime = now
+        var progress = ProjectInventoryProgress()
+        progress.discoveredEntryCount = visitedEntryCount
+        progress.inspectedEntryCount = inspectedEntryCount
+        progress.inspectedProjectCount = inspectedProjectCount
+        onProgress(progress)
+    }
 
     mutating func visit() throws {
         try Task.checkCancellation()
         visitedEntryCount += 1
-        guard visitedEntryCount <= maxEntries else {
+        reportProgress()
+        if let maxEntries, visitedEntryCount > maxEntries {
             throw ProjectInventoryScanError.traversalLimitExceeded(maxEntries)
         }
     }
@@ -638,10 +681,16 @@ private struct ProjectTotals {
     var containsProtectedMedia = false
     var inspectionIncomplete = false
     var inspectionLimitReached = false
+    var specificBlockReason: ProjectCleanupBlockReason?
+
+    mutating func block(_ reason: ProjectCleanupBlockReason) {
+        inspectionIncomplete = true
+        if specificBlockReason == nil { specificBlockReason = reason }
+    }
 
     var cleanupBlockReason: ProjectCleanupBlockReason? {
         if inspectionLimitReached { return .inspectionLimitReached }
-        return inspectionIncomplete ? .incompleteInspection : nil
+        return inspectionIncomplete ? (specificBlockReason ?? .incompleteInspection) : nil
     }
 }
 

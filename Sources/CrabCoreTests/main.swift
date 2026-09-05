@@ -20,6 +20,99 @@ private func expect(
 }
 
 private let tests: [(String, () throws -> Void)] = [
+    ("Default project scans inspect deep projects completely before returning", {
+        try withTemporaryHome { home in
+            let entryCount = max(40, Int(ProcessInfo.processInfo.environment["CRAB_LARGE_PROJECT_TEST_ENTRIES"] ?? "") ?? 40)
+            var project = home
+            for _ in 0..<24 { project.appendPathComponent("nested") }
+            try FileManager.default.createDirectory(at: project.appendingPathComponent(".git"), withIntermediateDirectories: true)
+            try Data().write(to: project.appendingPathComponent("AGENTS.md"))
+            let build = project.appendingPathComponent("node_modules/.hidden/build")
+            try FileManager.default.createDirectory(at: build, withIntermediateDirectories: true)
+            // Large stress runs use hard links in small buckets: still inspect every
+            // directory entry, without writing hundreds of thousands of data blocks.
+            let stressRun = entryCount > 40
+            for index in 0..<entryCount {
+                if stressRun {
+                    let bucket = build.appendingPathComponent("bucket-\(index / 1_000)")
+                    let seed = bucket.appendingPathComponent("artifact-seed")
+                    if index % 1_000 == 0 {
+                        try FileManager.default.createDirectory(at: bucket, withIntermediateDirectories: true)
+                        try Data([1, 2, 3]).write(to: seed)
+                    }
+                    guard link(seed.path, bucket.appendingPathComponent("artifact-\(index)").path) == 0 else {
+                        throw TestFailure(description: "Could not create stress fixture link")
+                    }
+                } else {
+                    try Data([1, 2, 3]).write(to: build.appendingPathComponent("artifact-\(index)"))
+                }
+            }
+            let uniqueArtifacts = stressRun ? (entryCount + 999) / 1_000 : entryCount
+            let expectedBytes = UInt64(uniqueArtifacts * 3)
+            let expectedFiles = UInt64(uniqueArtifacts + 1)
+            let rules = ProjectAssociationCatalog.rules(for: ["com.openai.codex"])
+            let bounded = try ProjectInventoryScanner(maxDepth: 12).scan(rootURLs: [home], rules: rules, installedAppIDs: ["com.openai.codex"])
+            try expect(bounded.discoveryWasLimited && bounded.projects.isEmpty, "Fixture must exceed the old depth limit")
+            let progress = RecordingProjectScanProgress()
+            let scanner = ProjectInventoryScanner()
+            let result = try scanner.scan(rootURLs: [home], rules: rules, installedAppIDs: ["com.openai.codex"],
+                onProgress: { progress.append($0) })
+            guard let item = result.projects.first else { throw TestFailure(description: "Deep project must be found") }
+            try expect(result.projects.count == 1 && !result.hasIncompleteResults && item.canClean,
+                "Default discovery and inspection must finish without depth or count limits")
+            try expect(item.logicalBytes == expectedBytes && item.fileCount == expectedFiles, "Include hidden and dependency contents in final totals, deduplicating hard links")
+            let reports = progress.values
+            try expect(reports.count >= 2 && reports.first?.inspectedEntryCount == 0,
+                "Progress starts before any result is available")
+            try expect(reports.last?.inspectedProjectCount == 1 && (reports.last?.inspectedEntryCount ?? 0) > entryCount,
+                "Final progress includes all inspected entries and projects")
+            let verified = try scanner.revalidateForTrash(item, homeURL: home, scannedAt: result.scannedAt)
+            try expect(verified.logicalBytes == expectedBytes, "Trash revalidation uses the same complete inspection policy")
+        }
+    }),
+    ("A cancelled complete scan never publishes partial results", {
+        try withTemporaryHome { home in
+            let entered = DispatchSemaphore(value: 0)
+            let release = DispatchSemaphore(value: 0)
+            let passed = DispatchSemaphore(value: 0)
+            let task = Task.detached {
+                do {
+                    _ = try ProjectInventoryScanner().scan(rootURLs: [home],
+                        rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]),
+                        installedAppIDs: ["com.openai.codex"], onProgress: { _ in
+                            entered.signal()
+                            _ = release.wait(timeout: .now() + 5)
+                        })
+                } catch is CancellationError {
+                    passed.signal()
+                } catch { }
+            }
+            defer { task.cancel(); release.signal() }
+            try expect(entered.wait(timeout: .now() + 5) == .success, "Scan must report that it started")
+            task.cancel()
+            release.signal()
+            try expect(passed.wait(timeout: .now() + 5) == .success,
+                "Cancellation must stop the worker rather than return a partial inventory")
+        }
+    }),
+    ("Default inspection completes all projects instead of returning budget-limited placeholders", {
+        try withTemporaryHome { home in
+            for name in ["A", "B", "C"] {
+                let project = home.appendingPathComponent(name)
+                try FileManager.default.createDirectory(at: project.appendingPathComponent(".git"), withIntermediateDirectories: true)
+                try Data([1, 2]).write(to: project.appendingPathComponent("AGENTS.md"))
+            }
+            let rules = ProjectAssociationCatalog.rules(for: ["com.openai.codex"])
+            let bounded = try ProjectInventoryScanner(maxProjectEntries: 1, maxInspectionEntries: 2)
+                .scan(rootURLs: [home], rules: rules, installedAppIDs: ["com.openai.codex"])
+            try expect(bounded.hasIncompleteResults, "Fixture must exhaust explicit budgets")
+            let complete = try ProjectInventoryScanner().scan(rootURLs: [home], rules: rules, installedAppIDs: ["com.openai.codex"])
+            try expect(!complete.hasIncompleteResults && complete.projects.count == 3,
+                "Default scanning must finish every project")
+            try expect(complete.projects.allSatisfy { $0.canClean && $0.logicalBytes == 2 && $0.fileCount == 1 },
+                "Only complete final totals are returned for readable projects")
+        }
+    }),
     ("A project inspection limit protects only that project and continues discovery", {
         try withTemporaryHome { home in
             let large = home.appendingPathComponent("A-Large")
@@ -215,7 +308,8 @@ private let tests: [(String, () throws -> Void)] = [
             let inventory = try ProjectInventoryScanner().scan(rootURLs: [home],
                 rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]), installedAppIDs: ["com.openai.codex"])
             guard let item = inventory.projects.first else { throw TestFailure(description: "Must show the protected project") }
-            try expect(!item.canClean, "A symlink must make complete inspection unavailable")
+            try expect(!item.canClean && item.cleanupBlockReason == .symbolicLink,
+                "A symlink remains protected and must be distinguished from an unfinished scan")
             var selection = ProjectCleanupSelection(inventory: inventory)
             selection.setSelected(item.id, selected: true)
             try expect(selection.selectedProjects.isEmpty, "Protected projects must remain unselected")
@@ -234,9 +328,9 @@ private let tests: [(String, () throws -> Void)] = [
             "The project cleanup menu symbol must exist on the supported macOS version"
         )
     }),
-    ("Version identifies the 0.2.6 release", {
+    ("Version identifies the 0.2.7 release", {
         try expect(
-            CrabCore.version == "0.2.6",
+            CrabCore.version == "0.2.7",
             "Expected release version, got \(CrabCore.version)"
         )
     }),
@@ -3285,6 +3379,17 @@ private func makeArchiveScanResult(in home: URL, scannedAt: Date) throws -> Arch
     try Data([1, 2, 3]).write(to: child.appendingPathComponent("artifact.bin"))
     try setModificationDateRecursively(child, to: scannedAt.addingTimeInterval(-181 * 86_400))
     return try ArchiveScanner().scan(rootURL: root, homeURL: home, now: scannedAt)
+}
+
+private final class RecordingProjectScanProgress: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [ProjectInventoryProgress] = []
+
+    var values: [ProjectInventoryProgress] { lock.withLock { storage } }
+
+    func append(_ progress: ProjectInventoryProgress) {
+        lock.withLock { storage.append(progress) }
+    }
 }
 
 private final class RecordingTrashMover: TrashMoving, @unchecked Sendable {

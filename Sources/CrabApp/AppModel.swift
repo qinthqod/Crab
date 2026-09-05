@@ -143,6 +143,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var harnessResidueIcon: NSImage?
     @Published private(set) var harnessResidueIssues: [HarnessResidueScanIssue] = []
     @Published private(set) var projectInventoryState: ProjectInventoryState = .idle
+    @Published private(set) var projectScanProgress = ProjectInventoryProgress()
     @Published private(set) var projectScanAccessState: ProjectScanAccessState = .unknown
     @Published private(set) var projectInventory = ProjectInventoryResult()
     @Published private(set) var projectCleanupSelection = ProjectCleanupSelection()
@@ -313,6 +314,7 @@ final class AppModel: ObservableObject {
         let generation = UUID()
         projectInventoryGeneration = generation
         projectInventoryState = .loading
+        projectScanProgress = ProjectInventoryProgress()
         projectInventory = ProjectInventoryResult()
         projectCleanupSelection = ProjectCleanupSelection()
 
@@ -341,7 +343,14 @@ final class AppModel: ObservableObject {
                             rootURLs: [scanRoot],
                             rules: rules,
                             installedAppIDs: inventory.installedAppIDs,
-                            evidencedProjectURLsByAppID: evidencedProjects
+                            evidencedProjectURLsByAppID: evidencedProjects,
+                            onProgress: { [weak self] progress in
+                                Task { @MainActor [weak self] in
+                                    guard let self, self.projectInventoryGeneration == generation,
+                                          self.projectInventoryState == .loading else { return }
+                                    self.projectScanProgress = progress
+                                }
+                            }
                         )
                         return ProjectInventoryWorkResult.success(inventory: inventory, result: result)
                     }

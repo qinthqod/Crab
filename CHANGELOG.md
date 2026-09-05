@@ -5,6 +5,27 @@ All notable changes to Crab are documented here. This project follows
 
 ## Unreleased
 
+## [0.2.7] - 2026-09-06
+
+### Fixed
+
+- Project scans now finish all accessible, in-scope discovery and inspection
+  before showing results. Default entry and depth limits no longer leave
+  otherwise readable projects partially inspected.
+- Deep directory discovery uses an explicit stack rather than recursive calls.
+  Trash revalidation uses the same complete inspection policy.
+- Protected projects now distinguish symbolic links, protected directories,
+  unsupported special files and directories changed during inspection.
+  Unreadable or unsafe content remains blocked from cleanup.
+
+### Added
+
+- Project scanning shows the crab animation with live traversal and inspection
+  counts, plus a Cancel and Return Home button. Cancelling does not publish
+  partial results.
+- Regression coverage for deep trees, complete scans, progress and cancellation,
+  including an opt-in stress test exceeding 250,000 directory entries.
+
 ## [0.2.6] - 2026-09-06
 
 ### Fixed

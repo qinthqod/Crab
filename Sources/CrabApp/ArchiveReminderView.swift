@@ -144,12 +144,26 @@ struct ArchiveReminderView: View {
             Text("正在扫描本机项目…")
                 .font(.system(size: 24, weight: .bold))
                 .foregroundStyle(Color.crabInk)
-            Text("根据项目目录中的明确标记自动关联已安装的 AI 应用")
+            Text(CrabL10n.text("正在逐项检查，全部检查结束后显示结果", "Checking all items before showing results"))
                 .font(.system(size: 14))
+                .foregroundStyle(.secondary)
+            Text(CrabL10n.format(
+                "已遍历 %d 项 · 已检查 %d 项内容 · 已处理 %d 个项目",
+                "%d entries searched · %d inspected · %d projects processed",
+                model.projectScanProgress.discoveredEntryCount,
+                model.projectScanProgress.inspectedEntryCount,
+                model.projectScanProgress.inspectedProjectCount))
+                .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(.secondary)
             Text("只读取文件名、修改时间与大小，不读取代码或对话内容")
                 .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
+            Button(CrabL10n.text("取消并返回首页", "Cancel and Return Home")) {
+                model.setMode(.cache)
+                model.returnToHome()
+            }
+            .buttonStyle(.bordered)
+            .tint(Color.crabPurple)
         }
         .padding(.bottom, 48)
         .accessibilityElement(children: .combine)
@@ -421,9 +435,7 @@ struct ArchiveReminderView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                 if !project.canClean {
-                    Text(project.cleanupBlockReason == .inspectionLimitReached
-                        ? CrabL10n.text("达到检查上限，仅显示已统计大小，不能清理", "Inspection limit reached · partial size · cleanup disabled")
-                        : CrabL10n.text("未能完整检查内容，已保护，不能清理", "Inspection incomplete · protected from cleanup"))
+                    Text(cleanupBlockMessage(project.cleanupBlockReason))
                         .font(.system(size: 11))
                         .foregroundStyle(.orange)
                 }
@@ -484,6 +496,23 @@ struct ArchiveReminderView: View {
         .padding(.vertical, 14)
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) { Divider() }
+    }
+
+    private func cleanupBlockMessage(_ reason: ProjectCleanupBlockReason?) -> String {
+        switch reason {
+        case .symbolicLink:
+            CrabL10n.text("含符号链接，为避免影响链接目标，不能清理", "Contains symbolic links · cleanup disabled to protect linked files")
+        case .protectedDirectory:
+            CrabL10n.text("含受保护目录，不能清理", "Contains a protected directory · cleanup disabled")
+        case .unsupportedEntry:
+            CrabL10n.text("含无法安全处理的特殊文件，不能清理", "Contains unsupported special files · cleanup disabled")
+        case .changedDuringInspection:
+            CrabL10n.text("扫描期间目录发生变化，请重新扫描", "Directory changed during inspection · scan again")
+        case .inspectionLimitReached:
+            CrabL10n.text("达到检查上限，仅显示已统计大小，不能清理", "Inspection limit reached · partial size · cleanup disabled")
+        case .incompleteInspection, nil:
+            CrabL10n.text("部分文件无法读取或已发生变化，不能清理", "Some files could not be read or have changed · cleanup disabled")
+        }
     }
 
     private var emptyState: some View {
