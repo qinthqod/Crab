@@ -5,6 +5,8 @@ All notable changes to Crab are documented here. This project follows
 
 ## Unreleased
 
+## [0.2.3] - 2026-09-05
+
 ### Fixed
 
 - Project Cleanup now preserves the exact security-scoped URL returned by the

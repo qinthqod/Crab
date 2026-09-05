@@ -30,9 +30,9 @@ private let tests: [(String, () throws -> Void)] = [
             "The project cleanup menu symbol must exist on the supported macOS version"
         )
     }),
-    ("Version identifies the 0.2.2 release", {
+    ("Version identifies the 0.2.3 release", {
         try expect(
-            CrabCore.version == "0.2.2",
+            CrabCore.version == "0.2.3",
             "Expected release version, got \(CrabCore.version)"
         )
     }),
