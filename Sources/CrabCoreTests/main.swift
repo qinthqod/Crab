@@ -2034,6 +2034,23 @@ private let tests: [(String, () throws -> Void)] = [
             "The bookmarked folder must be accessed before validation and released afterwards"
         )
     }),
+    ("Project scan refuses to continue when scoped access cannot start", {
+        let root = URL(fileURLWithPath: "/tmp/crab-denied-bookmark-fixture", isDirectory: true)
+        var didRunOperation = false
+
+        try expectThrows("A restored bookmark without active access must fail visibly") {
+            _ = try SecurityScopedResourceAccess.withRequiredAccess(
+                to: root,
+                startAccessing: { _ in false },
+                stopAccessing: { _ in },
+                operation: {
+                    didRunOperation = true
+                }
+            )
+        }
+
+        try expect(!didRunOperation, "Project scanning must not start outside the restored security scope")
+    }),
     ("Project cleanup selection starts empty and accepts any explicit project", {
         try withTemporaryHome { home in
             let now = Date(timeIntervalSince1970: 2_000_000_000)

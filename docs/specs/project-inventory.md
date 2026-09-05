@@ -47,6 +47,7 @@ public struct ProjectInventoryItem: Equatable, Sendable {
 ## Success Criteria
 
 - The first entry shows a clear one-time authorization screen. After the home-directory bookmark is saved, entering Project Cleanup automatically begins scanning without another folder chooser.
+- The exact security-scoped URL returned by the folder picker or bookmark resolver is retained through validation and scanning; Crab must not reconstruct an equivalent path and discard the attached grant. If scoped access cannot start, scanning stops and shows a reauthorization action instead of remaining on an unchanged screen.
 - Results contain each project path once and are grouped by an installed AI application.
 - Every row shows path, metadata-derived latest activity, approximate logical size, and an inactive indicator after 180 days.
 - Unreadable/protected entries are skipped without blocking the complete scan.

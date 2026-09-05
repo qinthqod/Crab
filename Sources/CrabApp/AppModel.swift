@@ -311,23 +311,23 @@ final class AppModel: ObservableObject {
 
         Task {
             let work = await Task.detached(priority: .utility) {
-                let accessed = scanRoot.startAccessingSecurityScopedResource()
-                defer { if accessed { scanRoot.stopAccessingSecurityScopedResource() } }
                 do {
-                    let inventory = HarnessInventoryScanner().scan(
-                        definitions: HarnessCatalog.supported,
-                        applicationRoots: applicationRoots,
-                        executableRoots: executableRoots,
-                        measureInstalledBytes: false,
-                        lastUsedDateProvider: { _ in nil }
-                    )
-                    let rules = ProjectAssociationCatalog.rules(for: inventory.installedAppIDs)
-                    let result = try ProjectInventoryScanner().scan(
-                        rootURLs: [scanRoot],
-                        rules: rules,
-                        installedAppIDs: inventory.installedAppIDs
-                    )
-                    return ProjectInventoryWorkResult.success(inventory: inventory, result: result)
+                    return try SecurityScopedResourceAccess.withRequiredAccess(to: scanRoot) {
+                        let inventory = HarnessInventoryScanner().scan(
+                            definitions: HarnessCatalog.supported,
+                            applicationRoots: applicationRoots,
+                            executableRoots: executableRoots,
+                            measureInstalledBytes: false,
+                            lastUsedDateProvider: { _ in nil }
+                        )
+                        let rules = ProjectAssociationCatalog.rules(for: inventory.installedAppIDs)
+                        let result = try ProjectInventoryScanner().scan(
+                            rootURLs: [scanRoot],
+                            rules: rules,
+                            installedAppIDs: inventory.installedAppIDs
+                        )
+                        return ProjectInventoryWorkResult.success(inventory: inventory, result: result)
+                    }
                 } catch {
                     return ProjectInventoryWorkResult.failure(String(describing: error))
                 }
@@ -428,13 +428,13 @@ final class AppModel: ObservableObject {
         projectCleanupState = .moving
         Task {
             let work = await Task.detached(priority: .userInitiated) {
-                let accessed = scanRoot.startAccessingSecurityScopedResource()
-                defer { if accessed { scanRoot.stopAccessingSecurityScopedResource() } }
                 do {
-                    let receipt = try ProjectCleanupExecutor(
-                        trashMover: SystemTrashMover()
-                    ).execute(plan: plan)
-                    return ProjectCleanupWorkResult.success(receipt)
+                    return try SecurityScopedResourceAccess.withRequiredAccess(to: scanRoot) {
+                        let receipt = try ProjectCleanupExecutor(
+                            trashMover: SystemTrashMover()
+                        ).execute(plan: plan)
+                        return ProjectCleanupWorkResult.success(receipt)
+                    }
                 } catch {
                     return ProjectCleanupWorkResult.failure(String(describing: error))
                 }
@@ -965,7 +965,7 @@ final class AppModel: ObservableObject {
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
-            let root = try SecurityScopedResourceAccess.withAccess(to: bookmarkedURL) {
+            let root = try SecurityScopedResourceAccess.withRequiredAccess(to: bookmarkedURL) {
                 let authorizedRoot = try ProjectScanAccessPolicy.authorizedRoot(
                     selectedURL: bookmarkedURL,
                     homeURL: FileManager.default.homeDirectoryForCurrentUser
@@ -979,7 +979,10 @@ final class AppModel: ObservableObject {
             return root
         } catch {
             UserDefaults.standard.removeObject(forKey: projectScanBookmarkKey)
-            projectScanAccessState = .needsAuthorization
+            projectScanAccessState = .failed(CrabL10n.text(
+                "文件夹授权未生效或已经失效，请重新选择个人文件夹。",
+                "Folder access was not granted or has expired. Select your Home folder again."
+            ))
             return nil
         }
     }

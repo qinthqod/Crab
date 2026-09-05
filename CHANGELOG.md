@@ -5,6 +5,14 @@ All notable changes to Crab are documented here. This project follows
 
 ## Unreleased
 
+### Fixed
+
+- Project Cleanup now preserves the exact security-scoped URL returned by the
+  folder picker. Authorizing the Home folder therefore proceeds into scanning
+  instead of losing access when the same path is reconstructed.
+- Invalid or expired project-scan bookmarks now show a visible reauthorization
+  message instead of silently returning to the authorization screen.
+
 ### Added
 
 - Runtime Optimization now reports local disk, memory-pressure, swap, uptime,
