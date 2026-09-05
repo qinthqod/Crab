@@ -16,10 +16,10 @@ Coding Harness 产生的本地存储。
 
 ## 下载
 
-[**下载 Crab v0.2.4 Apple Silicon 版 →**](https://github.com/qinthqod/Crab/releases/download/v0.2.4/Crab-0.2.4-macOS-arm64.dmg)
+[**下载 Crab v0.2.5 Apple Silicon 版 →**](https://github.com/qinthqod/Crab/releases/download/v0.2.5/Crab-0.2.5-macOS-arm64.dmg)
 
 Crab 需要 Apple Silicon 与 macOS 14 或更高版本。安装前可下载
-[SHA-256 校验文件](https://github.com/qinthqod/Crab/releases/download/v0.2.4/SHA256SUMS.txt)。
+[SHA-256 校验文件](https://github.com/qinthqod/Crab/releases/download/v0.2.5/SHA256SUMS.txt)。
 全部版本和发布说明请前往 [GitHub Releases](https://github.com/qinthqod/Crab/releases)。
 
 > **macOS 首次打开说明：**当前公开测试版采用 ad-hoc 签名，尚未经过 Apple 公证。
@@ -83,14 +83,14 @@ docs/             产品、工程、安全、研究和技术规格
 ## 系统要求
 
 - macOS 14 或更高版本
-- 可下载的 v0.2.4 测试版适用于 Apple Silicon
+- 可下载的 v0.2.5 测试版适用于 Apple Silicon
 - Intel Mac 可使用兼容的 Swift 6 工具链从源码构建
 - 从源码构建需要 Swift 6 工具链
 
 ## 安装公开测试版
 
-下载 [`Crab-0.2.4-macOS-arm64.dmg`](https://github.com/qinthqod/Crab/releases/download/v0.2.4/Crab-0.2.4-macOS-arm64.dmg)
-和 [`SHA256SUMS.txt`](https://github.com/qinthqod/Crab/releases/download/v0.2.4/SHA256SUMS.txt)，
+下载 [`Crab-0.2.5-macOS-arm64.dmg`](https://github.com/qinthqod/Crab/releases/download/v0.2.5/Crab-0.2.5-macOS-arm64.dmg)
+和 [`SHA256SUMS.txt`](https://github.com/qinthqod/Crab/releases/download/v0.2.5/SHA256SUMS.txt)，
 验证校验值并打开磁盘映像，然后把 `Crab.app` 拖到“Applications（应用程序）”快捷方式。
 复制完成后推出 Crab 磁盘映像。
 

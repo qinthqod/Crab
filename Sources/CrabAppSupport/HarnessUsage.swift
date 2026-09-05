@@ -65,6 +65,7 @@ public struct HarnessUsageScanner: Sendable {
         projectInventory: ProjectInventoryResult?,
         homeURL: URL
     ) -> [String: HarnessUsageSummary] {
+        guard !Task.isCancelled else { return [:] }
         var projectCounts: [String: Int] = [:]
         for project in projectInventory?.projects ?? [] {
             for appID in project.relatedAppIDs where installedAppIDs.contains(appID) {
@@ -152,7 +153,7 @@ public struct HarnessUsageScanner: Sendable {
         count: inout Int,
         matches: (URL) -> Bool
     ) -> Bool {
-        guard depth <= maxDepth else { return true }
+        guard !Task.isCancelled, depth <= maxDepth else { return false }
         let entries: [URL]
         do {
             entries = try FileManager.default.contentsOfDirectory(
@@ -165,6 +166,7 @@ public struct HarnessUsageScanner: Sendable {
         }
 
         for entry in entries {
+            guard !Task.isCancelled else { return false }
             visited += 1
             guard visited <= maxEntries else { return false }
             var metadata = stat()
@@ -202,24 +204,28 @@ public struct CodexProjectMetadataScanner: Sendable {
     private let sqliteExecutableURL: URL
     private let maximumDatabaseBytes: Int64
     private let maximumRootCount: Int
+    private let queryTimeout: TimeInterval
 
     public init(
         sqliteExecutableURL: URL = URL(fileURLWithPath: "/usr/bin/sqlite3"),
         maximumDatabaseBytes: Int64 = 512 * 1_024 * 1_024,
-        maximumRootCount: Int = 10_000
+        maximumRootCount: Int = 10_000,
+        queryTimeout: TimeInterval = 2
     ) {
         self.sqliteExecutableURL = sqliteExecutableURL
         self.maximumDatabaseBytes = maximumDatabaseBytes
         self.maximumRootCount = maximumRootCount
+        self.queryTimeout = queryTimeout
     }
 
     public func scan(homeURL: URL) -> CodexProjectMetadata? {
-        guard maximumDatabaseBytes > 0, maximumRootCount > 0 else { return nil }
+        guard !Task.isCancelled, maximumDatabaseBytes > 0, maximumRootCount > 0,
+              maximumRootCount < Int.max else { return nil }
         let candidates = [
             homeURL.appendingPathComponent(".codex/state_5.sqlite"),
             homeURL.appendingPathComponent(".codex/sqlite/state_5.sqlite"),
         ]
-        for databaseURL in candidates where isTrustedDatabase(databaseURL) {
+        for databaseURL in candidates where trustedCodexParents(databaseURL, homeURL: homeURL) && isTrustedDatabase(databaseURL) {
             if let metadata = readMetadata(from: databaseURL) {
                 return metadata
             }
@@ -231,29 +237,16 @@ public struct CodexProjectMetadataScanner: Sendable {
         let process = Process()
         process.executableURL = sqliteExecutableURL
         process.arguments = [
+            "-init", "/dev/null", "-batch",
             "-readonly",
             "-noheader",
             databaseURL.path,
             "SELECT 'C|' || COUNT(*) FROM projects; "
                 + "SELECT 'R|' || hex(path) FROM project_roots GROUP BY path ORDER BY hex(path) LIMIT \(maximumRootCount + 1);",
         ]
-        process.standardInput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        let output = Pipe()
-        process.standardOutput = output
-
-        do {
-            try process.run()
-            let data = output.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0,
-                  data.count <= 8 * 1_024 * 1_024,
-                  let text = String(data: data, encoding: .utf8)
-            else { return nil }
-            return parse(text)
-        } catch {
-            return nil
-        }
+        guard let data = boundedSQLiteOutput(process, maximumBytes: 8 * 1_024 * 1_024, timeout: queryTimeout),
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        return parse(text)
     }
 
     private func parse(_ output: String) -> CodexProjectMetadata? {
@@ -303,45 +296,38 @@ public struct CodexProjectMetadataScanner: Sendable {
 public struct CodexTokenUsageScanner: Sendable {
     private let sqliteExecutableURL: URL
     private let maximumDatabaseBytes: Int64
+    private let queryTimeout: TimeInterval
 
     public init(
         sqliteExecutableURL: URL = URL(fileURLWithPath: "/usr/bin/sqlite3"),
-        maximumDatabaseBytes: Int64 = 512 * 1_024 * 1_024
+        maximumDatabaseBytes: Int64 = 512 * 1_024 * 1_024,
+        queryTimeout: TimeInterval = 2
     ) {
         self.sqliteExecutableURL = sqliteExecutableURL
         self.maximumDatabaseBytes = maximumDatabaseBytes
+        self.queryTimeout = queryTimeout
     }
 
     public func scan(homeURL: URL) -> UInt64? {
-        guard maximumDatabaseBytes > 0 else { return nil }
+        guard !Task.isCancelled, maximumDatabaseBytes > 0 else { return nil }
         let candidates = [
             homeURL.appendingPathComponent(".codex/state_5.sqlite"),
             homeURL.appendingPathComponent(".codex/sqlite/state_5.sqlite"),
         ]
-        guard let databaseURL = candidates.first(where: isTrustedDatabase) else { return nil }
+        guard let databaseURL = candidates.first(where: {
+            trustedCodexParents($0, homeURL: homeURL) && isTrustedDatabase($0)
+        }) else { return nil }
 
         let process = Process()
         process.executableURL = sqliteExecutableURL
         process.arguments = [
+            "-init", "/dev/null", "-batch",
             "-readonly",
             "-noheader",
             databaseURL.path,
             "SELECT COALESCE(SUM(tokens_used), 0) FROM threads WHERE tokens_used > 0;",
         ]
-        process.standardInput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        let output = Pipe()
-        process.standardOutput = output
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return nil
-        }
-        guard process.terminationStatus == 0 else { return nil }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        guard data.count <= 64,
+        guard let data = boundedSQLiteOutput(process, maximumBytes: 64, timeout: queryTimeout),
               let string = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
               let value = UInt64(string),
               value > 0
@@ -358,4 +344,58 @@ public struct CodexTokenUsageScanner: Sendable {
         else { return false }
         return true
     }
+}
+
+private func trustedCodexParents(_ database: URL, homeURL: URL) -> Bool {
+    let home = homeURL.standardizedFileURL
+    var cursor = database.deletingLastPathComponent().standardizedFileURL
+    guard cursor.path.hasPrefix(home.path + "/") else { return false }
+    while cursor != home {
+        var metadata = stat()
+        guard lstat(cursor.path, &metadata) == 0, metadata.st_mode & S_IFMT == S_IFDIR else { return false }
+        cursor.deleteLastPathComponent()
+    }
+    return true
+}
+
+/// Only manages the read-only sqlite child created above; never targets an application process.
+private func boundedSQLiteOutput(_ process: Process, maximumBytes: Int, timeout: TimeInterval) -> Data? {
+    guard !Task.isCancelled, timeout.isFinite, timeout > 0 else { return nil }
+    process.standardInput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    let handle = pipe.fileHandleForReading
+    let descriptor = handle.fileDescriptor
+    guard fcntl(descriptor, F_SETFL, O_NONBLOCK) != -1 else { return nil }
+    defer { try? handle.close(); try? pipe.fileHandleForWriting.close() }
+    do { try process.run() } catch { return nil }
+    try? pipe.fileHandleForWriting.close()
+    defer {
+        if process.isRunning {
+            process.terminate()
+            let stopDeadline = ProcessInfo.processInfo.systemUptime + 0.2
+            while process.isRunning && ProcessInfo.processInfo.systemUptime < stopDeadline {
+                Thread.sleep(forTimeInterval: 0.01)
+            }
+            if process.isRunning { Darwin.kill(process.processIdentifier, SIGKILL) }
+        }
+        process.waitUntilExit()
+    }
+    let deadline = ProcessInfo.processInfo.systemUptime + timeout
+    var result = Data()
+    var buffer = [UInt8](repeating: 0, count: 8192)
+    while !Task.isCancelled && ProcessInfo.processInfo.systemUptime < deadline {
+        let count = Darwin.read(descriptor, &buffer, buffer.count)
+        if count > 0 {
+            guard result.count + count <= maximumBytes else { return nil }
+            result.append(contentsOf: buffer.prefix(count))
+        } else if count == 0 {
+            if !process.isRunning { return process.terminationStatus == 0 ? result : nil }
+            Thread.sleep(forTimeInterval: 0.01)
+        } else if errno == EAGAIN || errno == EINTR {
+            Thread.sleep(forTimeInterval: 0.01)
+        } else { return nil }
+    }
+    return nil
 }

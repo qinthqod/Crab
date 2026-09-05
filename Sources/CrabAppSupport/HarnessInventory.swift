@@ -1,6 +1,7 @@
 import CoreServices
 import Darwin
 import Foundation
+import Security
 
 public struct HarnessBundleIdentity: Equatable, Sendable {
     public let device: UInt64
@@ -18,6 +19,13 @@ public struct HarnessBundleIdentity: Equatable, Sendable {
             modificationNanoseconds: Int64(metadata.st_mtimespec.tv_sec) * 1_000_000_000
                 + Int64(metadata.st_mtimespec.tv_nsec)
         )
+    }
+
+    static func captureExecutable(at url: URL) -> HarnessBundleIdentity? {
+        var metadata = stat()
+        guard lstat(url.path, &metadata) == 0, metadata.st_mode & S_IFMT == S_IFREG else { return nil }
+        return HarnessBundleIdentity(device: UInt64(metadata.st_dev), inode: UInt64(metadata.st_ino),
+            modificationNanoseconds: Int64(metadata.st_mtimespec.tv_sec) * 1_000_000_000 + Int64(metadata.st_mtimespec.tv_nsec))
     }
 }
 
@@ -110,6 +118,7 @@ public struct HarnessInventoryScanner: Sendable {
         var installations: [HarnessInstallation] = []
 
         for definition in definitions {
+            if Task.isCancelled { break }
             if let bundleURL = locate(definition, roots: applicationRoots, availableApps: availableApps),
                let installation = inspectApplication(
                 definition: definition,
@@ -135,7 +144,8 @@ public struct HarnessInventoryScanner: Sendable {
 
     public func measuringInstalledBytes(in inventory: HarnessInventory) -> HarnessInventory {
         HarnessInventory(installations: inventory.installations.map { installation in
-            HarnessInstallation(
+            if Task.isCancelled { return installation }
+            return HarnessInstallation(
                 definition: installation.definition,
                 bundleURL: installation.bundleURL,
                 executableURL: installation.executableURL,
@@ -153,6 +163,7 @@ public struct HarnessInventoryScanner: Sendable {
         lastUsedDateProvider: @Sendable (URL) -> Date? = SpotlightHarnessUsage.lastUsedDate
     ) -> HarnessInventory {
         HarnessInventory(installations: inventory.installations.map { installation in
+            if Task.isCancelled { return installation }
             let activityURL = installation.executableURL ?? installation.bundleURL
             return HarnessInstallation(
                 definition: installation.definition,
@@ -178,7 +189,9 @@ public struct HarnessInventoryScanner: Sendable {
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
             ) else { continue }
 
-            for case let url as URL in enumerator where url.pathExtension.lowercased() == "app" {
+            for case let url as URL in enumerator {
+                if Task.isCancelled { return discovered }
+                guard url.pathExtension.lowercased() == "app" else { continue }
                 guard let values = try? url.resourceValues(forKeys: Set(keys)),
                       values.isDirectory == true,
                       values.isSymbolicLink != true,
@@ -245,6 +258,10 @@ public struct HarnessInventoryScanner: Sendable {
                 let candidate = root.appendingPathComponent(executableName)
                 guard FileManager.default.fileExists(atPath: candidate.path) else { continue }
                 let executableURL = candidate.resolvingSymlinksInPath().standardizedFileURL
+                if let native = inspectNativeClaude(definition: definition, executableURL: executableURL,
+                    measureInstalledBytes: measureInstalledBytes, lastUsedDateProvider: lastUsedDateProvider) {
+                    return native
+                }
                 guard let package = npmPackage(
                     containing: executableURL,
                     expectedName: commandLine.npmPackageName
@@ -265,6 +282,30 @@ public struct HarnessInventoryScanner: Sendable {
             }
         }
         return nil
+    }
+
+    private func inspectNativeClaude(
+        definition: HarnessDefinition, executableURL: URL, measureInstalledBytes: Bool,
+        lastUsedDateProvider: @Sendable (URL) -> Date?
+    ) -> HarnessInstallation? {
+        // Native installer layout plus the verified publisher identity; never execute a candidate.
+        guard !Task.isCancelled, definition.appID == "ai.anthropic.claude-code",
+              executableURL.path.contains("/.local/share/claude/versions/"),
+              executableURL.deletingLastPathComponent().lastPathComponent == "versions",
+              let identity = HarnessBundleIdentity.captureExecutable(at: executableURL)
+        else { return nil }
+        var code: SecStaticCode?
+        var requirement: SecRequirement?
+        let publisher = "anchor apple generic and identifier \"com.anthropic.claude-code\" and certificate leaf[subject.OU] = \"Q6L2SF6YDW\""
+        guard SecStaticCodeCreateWithPath(executableURL as CFURL, [], &code) == errSecSuccess,
+              let code,
+              SecRequirementCreateWithString(publisher as CFString, [], &requirement) == errSecSuccess,
+              SecStaticCodeCheckValidity(code, [], requirement) == errSecSuccess else { return nil }
+        let size = (try? executableURL.resourceValues(forKeys: [.fileAllocatedSizeKey]).fileAllocatedSize) ?? 0
+        // A version-looking filename is not authenticated version metadata.
+        return HarnessInstallation(definition: definition, bundleURL: executableURL, executableURL: executableURL,
+            kind: .commandLineTool, version: nil, installedBytes: measureInstalledBytes ? UInt64(max(0, size)) : 0,
+            lastUsedAt: lastUsedDateProvider(executableURL), identity: identity)
     }
 
     private func npmPackage(containing executableURL: URL, expectedName: String) -> (url: URL, version: String?)? {
@@ -289,6 +330,10 @@ public struct HarnessInventoryScanner: Sendable {
     }
 
     private func allocatedSize(of root: URL) -> UInt64 {
+        if let values = try? root.resourceValues(forKeys: [.isRegularFileKey, .fileAllocatedSizeKey]),
+           values.isRegularFile == true {
+            return UInt64(max(0, values.fileAllocatedSize ?? 0))
+        }
         let keys: Set<URLResourceKey> = [
             .isDirectoryKey,
             .isRegularFileKey,
@@ -307,6 +352,7 @@ public struct HarnessInventoryScanner: Sendable {
         ) else { return 0 }
 
         for case let url as URL in enumerator {
+            if Task.isCancelled { return 0 }
             guard let values = try? url.resourceValues(forKeys: keys) else { continue }
             if values.isSymbolicLink == true {
                 enumerator.skipDescendants()

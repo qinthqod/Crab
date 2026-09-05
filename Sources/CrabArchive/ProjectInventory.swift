@@ -22,8 +22,15 @@ public struct ProjectInventoryItem: Identifiable, Equatable, Sendable {
     public let logicalBytes: UInt64
     public let fileCount: UInt64
     public let isInactive: Bool
+    public internal(set) var cleanupBlockReason: ProjectCleanupBlockReason? = nil
+
+    public var canClean: Bool { cleanupBlockReason == nil }
 
     public var id: URL { path }
+}
+
+public enum ProjectCleanupBlockReason: Equatable, Sendable {
+    case incompleteInspection
 }
 
 public struct ProjectInventoryResult: Equatable, Sendable {
@@ -174,7 +181,8 @@ public struct ProjectInventoryScanner: Sendable {
                     latestActivity: project.latestActivity,
                     logicalBytes: project.logicalBytes,
                     fileCount: project.fileCount,
-                    isInactive: project.isInactive
+                    isInactive: project.isInactive,
+                    cleanupBlockReason: project.cleanupBlockReason
                 )
                 continue
             }
@@ -197,7 +205,8 @@ public struct ProjectInventoryScanner: Sendable {
                 latestActivity: totals.latestActivity,
                 logicalBytes: totals.logicalBytes,
                 fileCount: totals.fileCount,
-                isInactive: totals.latestActivity < cutoff
+                isInactive: totals.latestActivity < cutoff,
+                cleanupBlockReason: totals.inspectionIncomplete ? .incompleteInspection : nil
             ))
         }
     }
@@ -240,6 +249,7 @@ public struct ProjectInventoryScanner: Sendable {
         now: Date,
         context: inout ScanContext
     ) throws {
+        try Task.checkCancellation()
         guard depth <= maxDepth else { return }
         guard !isProtectedMediaDirectory(directory, scanRoot: scanRoot) else { return }
         let entries: [URL]
@@ -277,7 +287,8 @@ public struct ProjectInventoryScanner: Sendable {
                 latestActivity: totals.latestActivity,
                 logicalBytes: totals.logicalBytes,
                 fileCount: totals.fileCount,
-                isInactive: totals.latestActivity < cutoff
+                isInactive: totals.latestActivity < cutoff,
+                cleanupBlockReason: totals.inspectionIncomplete ? .incompleteInspection : nil
             ))
         }
 
@@ -308,6 +319,9 @@ public struct ProjectInventoryScanner: Sendable {
         now: Date = Date(),
         maxEvidenceAge: TimeInterval = 600
     ) throws -> ProjectInventoryItem {
+        guard project.canClean else {
+            throw ProjectInventoryVerificationError.unsafePath(project.path.path)
+        }
         let evidenceAge = now.timeIntervalSince(scannedAt)
         guard maxEvidenceAge > 0, evidenceAge >= 0, evidenceAge <= maxEvidenceAge else {
             throw ProjectInventoryVerificationError.staleEvidence
@@ -366,7 +380,7 @@ public struct ProjectInventoryScanner: Sendable {
             rootDevice: homeDevice,
             context: &context
         )
-        guard !totals.containsProtectedMedia else {
+        guard !totals.containsProtectedMedia, !totals.inspectionIncomplete else {
             throw ProjectInventoryVerificationError.unsafePath(path.path)
         }
         guard totals.identity == project.identity,
@@ -420,17 +434,27 @@ public struct ProjectInventoryScanner: Sendable {
         context: inout ScanContext
     ) throws -> ProjectTotals {
         var rootMetadata = stat()
-        guard lstat(root.path, &rootMetadata) == 0 else {
+        guard lstat(root.path, &rootMetadata) == 0,
+              rootMetadata.st_mode & S_IFMT == S_IFDIR,
+              UInt64(rootMetadata.st_dev) == rootDevice else {
             throw ProjectInventoryScanError.invalidRoot(root.path)
         }
         var totals = ProjectTotals(
             identity: ArchiveFileIdentity(metadata: rootMetadata, kind: .directory),
             latestActivity: modificationDate(rootMetadata)
         )
-        var stack = [root]
+        var stack: [(URL, ArchiveFileIdentity)] = [(root, totals.identity)]
         var seenFiles = Set<ProjectFileKey>()
 
-        while let directory = stack.popLast() {
+        while let (directory, expectedIdentity) = stack.popLast() {
+            try Task.checkCancellation()
+            var current = stat()
+            guard lstat(directory.path, &current) == 0,
+                  current.st_mode & S_IFMT == S_IFDIR,
+                  ArchiveFileIdentity(metadata: current, kind: .directory) == expectedIdentity else {
+                totals.inspectionIncomplete = true
+                continue
+            }
             let entries: [URL]
             do {
                 entries = try FileManager.default.contentsOfDirectory(
@@ -440,6 +464,7 @@ public struct ProjectInventoryScanner: Sendable {
                 )
             } catch {
                 context.skippedDirectoryCount += 1
+                totals.inspectionIncomplete = true
                 continue
             }
 
@@ -448,14 +473,19 @@ public struct ProjectInventoryScanner: Sendable {
                 var metadata = stat()
                 guard lstat(entry.path, &metadata) == 0,
                       UInt64(metadata.st_dev) == rootDevice
-                else { continue }
+                else {
+                    totals.inspectionIncomplete = true
+                    continue
+                }
                 totals.latestActivity = max(totals.latestActivity, modificationDate(metadata))
                 switch metadata.st_mode & S_IFMT {
                 case S_IFDIR:
                     if isProtectedMediaDirectory(entry, scanRoot: scanRoot) {
                         totals.containsProtectedMedia = true
-                    } else if !shouldSkipDirectory(named: entry.lastPathComponent) {
-                        stack.append(entry)
+                    } else if isProtectedContentDirectory(entry.lastPathComponent) {
+                        totals.inspectionIncomplete = true
+                    } else {
+                        stack.append((entry, ArchiveFileIdentity(metadata: metadata, kind: .directory)))
                     }
                 case S_IFREG:
                     let key = ProjectFileKey(device: UInt64(metadata.st_dev), inode: UInt64(metadata.st_ino))
@@ -464,11 +494,20 @@ public struct ProjectInventoryScanner: Sendable {
                         totals.logicalBytes += UInt64(max(0, metadata.st_size))
                     }
                 default:
+                    // Never follow links or silently approve an incompletely inspected target.
+                    totals.inspectionIncomplete = true
                     continue
                 }
             }
         }
         return totals
+    }
+
+    private func isProtectedContentDirectory(_ name: String) -> Bool {
+        let name = name.lowercased()
+        return ["library", "applications", ".trash", "pictures", "music"].contains(name)
+            || name.hasPrefix("onedrive") || name.hasPrefix("dropbox")
+            || name.hasPrefix("google drive") || name.hasPrefix("icloud drive")
     }
 
     private func shouldSkipDirectory(named name: String) -> Bool {
@@ -535,6 +574,7 @@ private struct ScanContext {
     var seenProjectPaths = Set<String>()
 
     mutating func visit() throws {
+        try Task.checkCancellation()
         visitedEntryCount += 1
         guard visitedEntryCount <= maxEntries else {
             throw ProjectInventoryScanError.traversalLimitExceeded(maxEntries)
@@ -548,6 +588,7 @@ private struct ProjectTotals {
     var logicalBytes: UInt64 = 0
     var fileCount: UInt64 = 0
     var containsProtectedMedia = false
+    var inspectionIncomplete = false
 }
 
 private struct ProjectFileKey: Hashable {

@@ -16,15 +16,6 @@ private enum ScanWorkResult: Sendable {
     case failure(String)
 }
 
-private enum HarnessInventoryWorkResult: Sendable {
-    case success(
-        inventory: HarnessInventory,
-        projectInventory: ProjectInventoryResult?,
-        usage: [String: HarnessUsageSummary]
-    )
-    case failure(String)
-}
-
 private enum HarnessUninstallWorkResult: Sendable {
     case success(HarnessUninstallReceipt)
     case failure(String)
@@ -62,9 +53,11 @@ private enum ProjectCleanupWorkResult: Sendable {
 
 private struct SystemApplicationActivityChecker: ApplicationActivityChecking {
     func isApplicationRunning(bundleIdentifier: String) -> Bool {
-        !NSRunningApplication.runningApplications(
+        if !NSRunningApplication.runningApplications(
             withBundleIdentifier: bundleIdentifier
-        ).isEmpty
+        ).isEmpty { return true }
+        guard HarnessCatalog.definition(for: bundleIdentifier)?.commandLine != nil else { return false }
+        return HarnessCLIActivity.runningAppIDs()?.contains(bundleIdentifier) ?? true
     }
 }
 
@@ -165,6 +158,9 @@ final class AppModel: ObservableObject {
     private var inventoryGeneration = UUID()
     private var projectInventoryGeneration = UUID()
     private var harnessMetadataTask: Task<Void, Never>?
+    private var cacheScanTask: Task<Void, Never>?
+    private var projectScanTask: Task<Void, Never>?
+    private var inventoryScanTask: Task<Void, Never>?
     private var harnessResidueRules: [HarnessResidueRule] = []
     private var harnessResidueGeneration = UUID()
     private var cancellables = Set<AnyCancellable>()
@@ -203,12 +199,12 @@ final class AppModel: ObservableObject {
     var protectedHarnessCount: Int { scanOverview.protectedProductCount }
 
     func scanUserCaches() {
+        cacheScanTask?.cancel()
         let generation = UUID()
         scanGeneration = generation
         loadedRules = []
         scanOverview = AppScanOverview()
         cacheWorkflow.beginScan()
-        let scanStartedAt = Date()
 
         guard let resources = Bundle.main.resourceURL else {
             cacheWorkflow.fail(message: CrabL10n.text(
@@ -223,9 +219,10 @@ final class AppModel: ObservableObject {
         let applicationRoots = harnessApplicationRoots(homeDirectory: homeDirectory)
         let executableRoots = harnessExecutableRoots(homeDirectory: homeDirectory)
 
-        Task {
-            let work = await Task.detached(priority: .userInitiated) {
+        cacheScanTask = Task {
+            let work = await ScanWorker.run(priority: .userInitiated) {
                 do {
+                    try Task.checkCancellation()
                     let rules = try RuleLoader().load(directory: ruleDirectory)
                     let inventory = HarnessInventoryScanner().scan(
                         definitions: HarnessCatalog.supported,
@@ -244,14 +241,9 @@ final class AppModel: ObservableObject {
                 } catch {
                     return ScanWorkResult.failure(String(describing: error))
                 }
-            }.value
-
-            let remainingLoadingTime = 1.4 - Date().timeIntervalSince(scanStartedAt)
-            if remainingLoadingTime > 0 {
-                try? await Task.sleep(for: .seconds(remainingLoadingTime))
             }
 
-            guard scanGeneration == generation else { return }
+            guard !Task.isCancelled, scanGeneration == generation else { return }
             switch work {
             case let .success(rules, result, inventory):
                 loadedRules = rules
@@ -281,6 +273,7 @@ final class AppModel: ObservableObject {
     }
 
     func returnToHome() {
+        cacheScanTask?.cancel()
         scanGeneration = UUID()
         loadedRules = []
         scanOverview = AppScanOverview()
@@ -290,11 +283,29 @@ final class AppModel: ObservableObject {
 
     func setMode(_ mode: Mode) {
         guard self.mode != mode else { return }
+        switch self.mode {
+        case .cache:
+            if state == .loading { returnToHome() }
+        case .archive:
+            if projectInventoryState == .loading {
+                projectScanTask?.cancel()
+                projectInventoryGeneration = UUID()
+                projectInventoryState = .idle
+            }
+        case .harness:
+            inventoryScanTask?.cancel()
+            harnessMetadataTask?.cancel()
+            inventoryGeneration = UUID()
+            harnessMetadataIsLoading = false
+            inventoryState = .idle
+        case .optimizer: break
+        }
         self.mode = mode
     }
 
     func scanProjects(force: Bool = false) {
         guard force || projectInventoryState == .idle else { return }
+        projectScanTask?.cancel()
         guard let scanRoot = restoreProjectScanRoot() else {
             projectInventoryState = .idle
             return
@@ -309,9 +320,10 @@ final class AppModel: ObservableObject {
         let applicationRoots = harnessApplicationRoots(homeDirectory: homeDirectory)
         let executableRoots = harnessExecutableRoots(homeDirectory: homeDirectory)
 
-        Task {
-            let work = await Task.detached(priority: .utility) {
+        projectScanTask = Task {
+            let work = await ScanWorker.run {
                 do {
+                    try Task.checkCancellation()
                     return try SecurityScopedResourceAccess.withRequiredAccess(to: scanRoot) {
                         let inventory = HarnessInventoryScanner().scan(
                             definitions: HarnessCatalog.supported,
@@ -336,9 +348,9 @@ final class AppModel: ObservableObject {
                 } catch {
                     return ProjectInventoryWorkResult.failure(String(describing: error))
                 }
-            }.value
+            }
 
-            guard projectInventoryGeneration == generation else { return }
+            guard !Task.isCancelled, projectInventoryGeneration == generation else { return }
             switch work {
             case let .success(inventory, result):
                 acceptLightweightHarnessInventory(inventory)
@@ -403,7 +415,8 @@ final class AppModel: ObservableObject {
     }
 
     func allProjectsAreSelected(in projects: [ProjectInventoryItem]) -> Bool {
-        !projects.isEmpty && projects.allSatisfy {
+        let eligible = projects.filter(\.canClean)
+        return !eligible.isEmpty && eligible.allSatisfy {
             projectCleanupSelection.selectedProjectIDs.contains($0.id)
         }
     }
@@ -496,13 +509,12 @@ final class AppModel: ObservableObject {
         inventoryState = .loading
         harnessMetadataIsLoading = true
         harnessMetadataTask?.cancel()
+        inventoryScanTask?.cancel()
         let homeDirectory = FileManager.default.homeDirectoryForCurrentUser
         let roots = harnessApplicationRoots(homeDirectory: homeDirectory)
         let executableRoots = harnessExecutableRoots(homeDirectory: homeDirectory)
-        let cachedProjectInventory = projectInventoryState == .ready ? projectInventory : nil
-
-        Task {
-            let work = await Task.detached(priority: .utility) {
+        inventoryScanTask = Task {
+            let inventory = await ScanWorker.run {
                 let inventory = HarnessInventoryScanner().scan(
                     definitions: HarnessCatalog.supported,
                     applicationRoots: roots,
@@ -510,51 +522,40 @@ final class AppModel: ObservableObject {
                     measureInstalledBytes: false,
                     lastUsedDateProvider: { _ in nil }
                 )
-                let usage = HarnessUsageScanner().scan(
-                    installedAppIDs: inventory.installedAppIDs,
-                    projectInventory: cachedProjectInventory,
-                    homeURL: homeDirectory
-                )
-                return HarnessInventoryWorkResult.success(
-                    inventory: inventory,
-                    projectInventory: cachedProjectInventory,
-                    usage: usage
-                )
-            }.value
-
-            guard inventoryGeneration == generation else { return }
-            switch work {
-            case let .success(inventory, scannedProjects, usage):
-                harnessInventory = inventory
-                harnessUsageByAppID = usage
-                if let scannedProjects {
-                    projectInventory = scannedProjects
-                    projectCleanupSelection = ProjectCleanupSelection(inventory: scannedProjects)
-                    projectInventoryState = .ready
-                }
-                inventoryState = .ready
-                crabPerformanceLogger.info(
-                    "Application inventory ready in \(Date().timeIntervalSince(refreshStartedAt), privacy: .public) seconds"
-                )
-                enrichHarnessMetadata(in: inventory, generation: generation)
-            case let .failure(message):
-                harnessMetadataIsLoading = false
-                inventoryState = .failed(message)
+                return inventory
             }
+
+            guard !Task.isCancelled, inventoryGeneration == generation else { return }
+            harnessInventory = inventory
+            harnessUsageByAppID = [:]
+            inventoryState = .ready
+            crabPerformanceLogger.info(
+                "Application inventory ready in \(Date().timeIntervalSince(refreshStartedAt), privacy: .public) seconds"
+            )
+            enrichHarnessMetadata(in: inventory, generation: generation)
         }
     }
 
     private func enrichHarnessMetadata(in inventory: HarnessInventory, generation: UUID) {
+        let projects = projectInventoryState == .ready ? projectInventory : nil
+        let home = FileManager.default.homeDirectoryForCurrentUser
         harnessMetadataTask = Task {
-            let activityInventory = await Task.detached(priority: .utility) {
+            let activityInventory = await ScanWorker.run {
                 HarnessInventoryScanner().measuringLastUsedDates(in: inventory)
-            }.value
+            }
             guard !Task.isCancelled, inventoryGeneration == generation else { return }
             harnessInventory = activityInventory
 
-            let completeInventory = await Task.detached(priority: .background) {
+            let usage = await ScanWorker.run {
+                HarnessUsageScanner().scan(installedAppIDs: inventory.installedAppIDs,
+                                           projectInventory: projects, homeURL: home)
+            }
+            guard !Task.isCancelled, inventoryGeneration == generation else { return }
+            harnessUsageByAppID = usage
+
+            let completeInventory = await ScanWorker.run(priority: .background) {
                 HarnessInventoryScanner().measuringInstalledBytes(in: activityInventory)
-            }.value
+            }
             guard !Task.isCancelled, inventoryGeneration == generation else { return }
             harnessInventory = completeInventory
             harnessMetadataIsLoading = false
@@ -565,6 +566,10 @@ final class AppModel: ObservableObject {
         guard harnessInventory.installations.isEmpty
                 || harnessInventory.installedAppIDs != inventory.installedAppIDs
         else { return }
+        inventoryGeneration = UUID()
+        inventoryScanTask?.cancel()
+        harnessMetadataTask?.cancel()
+        harnessMetadataIsLoading = false
         harnessInventory = inventory
         harnessUsageByAppID = [:]
         inventoryState = .idle

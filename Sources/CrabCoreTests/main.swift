@@ -20,6 +20,116 @@ private func expect(
 }
 
 private let tests: [(String, () throws -> Void)] = [
+    ("Codex CLI npm installation is detected without a desktop app", {
+        try withTemporaryHome { home in
+            let bin = home.appendingPathComponent("bin")
+            let package = home.appendingPathComponent("lib/node_modules/@openai/codex")
+            try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: package.appendingPathComponent("bin"), withIntermediateDirectories: true)
+            let executable = package.appendingPathComponent("bin/codex.js")
+            try Data().write(to: executable)
+            try Data(#"{"name":"@openai/codex","version":"1.2.3"}"#.utf8).write(to: package.appendingPathComponent("package.json"))
+            try FileManager.default.createSymbolicLink(at: bin.appendingPathComponent("codex"), withDestinationURL: executable)
+            let inventory = HarnessInventoryScanner().scan(definitions: HarnessCatalog.supported,
+                applicationRoots: [], executableRoots: [bin], measureInstalledBytes: false, lastUsedDateProvider: { _ in nil })
+            try expect(inventory.installedAppIDs == ["com.openai.codex"], "CLI-only Codex must enable its catalog rules")
+            try expect(inventory.installations.first?.version == "1.2.3", "Use the actual package version")
+        }
+    }),
+    ("Native CLI detection rejects unsigned lookalike executables", {
+        try withTemporaryHome { home in
+            let bin = home.appendingPathComponent(".local/bin")
+            let binary = home.appendingPathComponent(".local/share/claude/versions/9.9.9")
+            try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: binary.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("not a signed Claude binary".utf8).write(to: binary)
+            try FileManager.default.createSymbolicLink(at: bin.appendingPathComponent("claude"), withDestinationURL: binary)
+            let inventory = HarnessInventoryScanner().scan(definitions: HarnessCatalog.supported,
+                applicationRoots: [], executableRoots: [bin], measureInstalledBytes: false, lastUsedDateProvider: { _ in nil })
+            try expect(inventory.installations.isEmpty, "A familiar name and directory must not be accepted as publisher evidence")
+        }
+    }),
+    ("Read worker forwards cancellation into filesystem scans", {
+        let entered = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        let passed = DispatchSemaphore(value: 0)
+        let task = Task.detached {
+            let cancelled = await ScanWorker.run {
+                entered.signal()
+                _ = release.wait(timeout: .now() + 5)
+                do { try Task.checkCancellation(); return false } catch { return true }
+            }
+            if cancelled { passed.signal() }
+        }
+        try expect(entered.wait(timeout: .now() + 5) == .success, "Worker must start off the UI thread")
+        task.cancel()
+        release.signal()
+        try expect(passed.wait(timeout: .now() + 5) == .success, "Cancellation must reach the detached worker")
+    }),
+    ("CLI activity uses exact product process names", {
+        try expect(HarnessCLIActivity.appIDs(processNames: ["codex", "claude.exe", "dsh"]) ==
+            ["com.openai.codex", "ai.anthropic.claude-code", "ai.deepseek.dsh"], "Native CLI processes must be associated with products")
+        try expect(HarnessCLIActivity.appIDs(processNames: ["node", "not-codex", "Claude"]).isEmpty,
+            "Generic runtimes and substring matches must not be attributed to a CLI")
+    }),
+    ("Codex metadata rejects linked parents and bounds slow queries", {
+        try withTemporaryHome { home in
+            try makeCodexStateDatabase(in: home, tokenCounts: [4])
+            let database = home.appendingPathComponent(".codex/state_5.sqlite")
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+            process.arguments = [database.path,
+                "DROP TABLE threads; CREATE VIEW threads AS WITH RECURSIVE t(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM t WHERE x<1000000000) SELECT x AS tokens_used FROM t;"]
+            try process.run()
+            process.waitUntilExit()
+            try expect(process.terminationStatus == 0, "Slow query fixture must be created")
+            let start = Date()
+            try expect(CodexTokenUsageScanner(queryTimeout: 0.05).scan(homeURL: home) == nil,
+                "Timed out queries must return unavailable, not a partial count")
+            try expect(Date().timeIntervalSince(start) < 2, "SQLite worker must stop within its time budget")
+            let real = home.appendingPathComponent("real-codex")
+            try FileManager.default.moveItem(at: home.appendingPathComponent(".codex"), to: real)
+            try FileManager.default.createSymbolicLink(at: home.appendingPathComponent(".codex"), withDestinationURL: real)
+            try expect(CodexProjectMetadataScanner().scan(homeURL: home) == nil &&
+                CodexTokenUsageScanner().scan(homeURL: home) == nil, "Linked database parents must be rejected")
+        }
+    }),
+    ("Cleanup keeps a partial success receipt if a later owner starts", {
+        try withTemporaryHome { home in
+            let first = try makeScannedCandidate(in: home)
+            let rule = try RuleValidator.decode(data: validRuleData()
+                .replacingUTF8("dev.crab.fixture.cache.v1", with: "dev.crab.fixture.cache.secondary.v1")
+                .replacingUTF8("Library/Caches/CrabFixture/Cache", with: "Library/Caches/CrabFixture/Secondary"))
+            try FileManager.default.createDirectory(at: home.appendingPathComponent(rule.leaf), withIntermediateDirectories: true)
+            let second = try SafeScanner().scan(rule: rule, homeURL: home)
+            let candidates = [first, second]
+            let plan = try PlanBuilder().build(candidates: candidates, selectedRuleIDs: Set(candidates.map { $0.rule.id }))
+            let mover = RecordingTrashMover()
+            let receipt = try CleanupExecutor(trashMover: mover,
+                applicationChecker: RecordingApplicationChecker(responses: [false, false, false, true]))
+                .execute(plan: plan, rules: candidates.map(\.rule), homeURL: home)
+            try expect(receipt.moved.count == 1 && receipt.failed.count == 1 && mover.urls.count == 1,
+                "An owner restart must not discard an earlier successful move")
+        }
+    }),
+    ("Incomplete projects cannot be selected or put into a cleanup plan", {
+        try withTemporaryHome { home in
+            let project = home.appendingPathComponent("Projects/Linked")
+            try FileManager.default.createDirectory(at: project.appendingPathComponent(".git"), withIntermediateDirectories: true)
+            try Data().write(to: project.appendingPathComponent("AGENTS.md"))
+            try FileManager.default.createSymbolicLink(at: project.appendingPathComponent("dependency"), withDestinationURL: home)
+            let inventory = try ProjectInventoryScanner().scan(rootURLs: [home],
+                rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]), installedAppIDs: ["com.openai.codex"])
+            guard let item = inventory.projects.first else { throw TestFailure(description: "Must show the protected project") }
+            try expect(!item.canClean, "A symlink must make complete inspection unavailable")
+            var selection = ProjectCleanupSelection(inventory: inventory)
+            selection.setSelected(item.id, selected: true)
+            try expect(selection.selectedProjects.isEmpty, "Protected projects must remain unselected")
+            try expectThrows("Direct plan creation must not bypass protection") {
+                _ = try ProjectCleanupPlanBuilder().build(inventory: inventory, selectedProjectIDs: [item.id], homeURL: home)
+            }
+        }
+    }),
     ("Project cleanup menu uses an available folder cleanup symbol", {
         try expect(
             CrabMenuSymbols.projectCleanup == "folder.badge.minus",
@@ -30,9 +140,9 @@ private let tests: [(String, () throws -> Void)] = [
             "The project cleanup menu symbol must exist on the supported macOS version"
         )
     }),
-    ("Version identifies the 0.2.4 release", {
+    ("Version identifies the 0.2.5 release", {
         try expect(
-            CrabCore.version == "0.2.4",
+            CrabCore.version == "0.2.5",
             "Expected release version, got \(CrabCore.version)"
         )
     }),
@@ -1735,15 +1845,12 @@ private let tests: [(String, () throws -> Void)] = [
             let mover = RecordingTrashMover()
             let checker = RecordingApplicationChecker(responses: [false, true])
 
-            do {
-                _ = try CleanupExecutor(
-                    trashMover: mover,
-                    applicationChecker: checker
-                ).execute(plan: plan, rules: [candidate.rule], homeURL: home)
-                throw TestFailure(description: "An owner that restarts must stop execution")
-            } catch CleanupExecutionError.ownerRunning(candidate.rule.id) {
-                // Expected: the second execution-time check catches the restart.
-            }
+            let receipt = try CleanupExecutor(
+                trashMover: mover,
+                applicationChecker: checker
+            ).execute(plan: plan, rules: [candidate.rule], homeURL: home)
+            try expect(receipt.failed.count == 1 && receipt.moved.count == 0,
+                       "A restarted owner must be retained in the receipt without moving its cache")
 
             try expect(checker.checkedBundleIDs.count == 2, "Expected an owner check before preflight and before Trash")
             try expect(mover.urls.isEmpty, "Nothing may move after the owner restarts")
@@ -2005,6 +2112,28 @@ private let tests: [(String, () throws -> Void)] = [
                 ).map(\.path) == [codexProject.standardizedFileURL],
                 "The recent filter must exclude six-month projects"
             )
+        }
+    }),
+    ("Project inventory counts dependency trees and blocks nested protected content", {
+        try withTemporaryHome { home in
+            let project = home.appendingPathComponent("Projects/Example")
+            for name in [".git", "build", "node_modules", ".hidden"] {
+                let directory = project.appendingPathComponent(name)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try Data(repeating: 1, count: 1024).write(to: directory.appendingPathComponent("data"))
+            }
+            try Data().write(to: project.appendingPathComponent("AGENTS.md"))
+            let scanner = ProjectInventoryScanner()
+            let rules = ProjectAssociationCatalog.rules(for: ["com.openai.codex"])
+            let inventory = try scanner.scan(rootURLs: [home], rules: rules, installedAppIDs: ["com.openai.codex"])
+            guard let item = inventory.projects.first else { throw TestFailure(description: "Missing project") }
+            try expect(item.logicalBytes == 4096, "Whole-project size must include build, dependencies and hidden files")
+            try FileManager.default.createDirectory(at: project.appendingPathComponent("build/Private.photoslibrary"), withIntermediateDirectories: true)
+            try expectThrows("New protected content must block Trash revalidation") {
+                _ = try scanner.revalidateForTrash(item, homeURL: home, scannedAt: inventory.scannedAt)
+            }
+            let rescan = try scanner.scan(rootURLs: [home], rules: rules, installedAppIDs: ["com.openai.codex"])
+            try expect(rescan.projects.isEmpty, "A parent containing a media library must not be offered for cleanup")
         }
     }),
     ("Project inventory accepts only local Codex roots from indexed metadata", {

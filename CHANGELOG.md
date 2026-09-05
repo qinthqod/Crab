@@ -5,6 +5,35 @@ All notable changes to Crab are documented here. This project follows
 
 ## Unreleased
 
+## [0.2.5] - 2026-09-06
+
+### Fixed
+
+- Project sizes now include hidden files, dependencies and build output.
+  Whole-project cleanup is blocked when inspection is incomplete; nested
+  Photos and Music libraries are excluded from cleanup.
+- App Management shows installed applications before loading usage, activity
+  and size details, without overwriting Project Cleanup results or selections.
+- Leaving a scanning page cancels its background scan. Disk-heavy read jobs
+  are coordinated and the artificial cache-loading delay has been removed.
+- Cleanup retains a partial-success receipt if another owning app starts
+  before a later cache item can be moved to Trash.
+- Project age labels now say "unmodified" instead of implying confirmed non-use.
+
+### Added
+
+- Codex npm CLI detection and publisher-verified native Claude Code detection.
+- Running-state detection for recognized Codex, Claude Code and DeepSeek CLI
+  process names in App Management.
+
+### Security
+
+- Codex metadata queries have time and output limits and reject linked database
+  parents. Queries remain read-only and do not read conversation transcripts.
+- Native CLI candidates are verified without executing them; unverified native
+  version values remain hidden. Cleanup still requires explicit confirmation
+  and moves eligible items only to Trash.
+
 ## [0.2.4] - 2026-09-05
 
 ### Fixed

@@ -99,7 +99,7 @@ public struct ProjectCleanupSelection: Equatable, Sendable {
 
     public mutating func setSelected(_ projectID: URL, selected: Bool) {
         let normalizedID = projectID.standardizedFileURL
-        guard inventory.projects.contains(where: { $0.id == normalizedID }) else {
+        guard inventory.projects.contains(where: { $0.id == normalizedID && $0.canClean }) else {
             selectedProjectIDs.remove(normalizedID)
             return
         }
@@ -170,6 +170,9 @@ public struct ProjectCleanupPlanBuilder: Sendable {
         let entries = try normalizedIDs.map { id -> ProjectInventoryItem in
             guard let project = projectsByID[id] else {
                 throw ProjectCleanupPlanError.unknownProject(id.path)
+            }
+            guard project.canClean else {
+                throw ProjectInventoryVerificationError.unsafePath(project.path.path)
             }
             return project
         }.sorted { $0.path.path < $1.path.path }

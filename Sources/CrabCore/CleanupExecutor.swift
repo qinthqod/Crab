@@ -165,7 +165,11 @@ public struct CleanupExecutor<
                 continue
             }
             guard !isOwnerRunning(for: candidate.rule) else {
-                throw CleanupExecutionError.ownerRunning(entry.ruleID)
+                failed = CleanupOutcomeMeasure(
+                    count: failed.count + 1,
+                    logicalBytes: failed.logicalBytes + entry.logicalBytes
+                )
+                continue
             }
             do {
                 try trashMover.moveToTrash(candidate.path)

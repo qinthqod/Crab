@@ -189,8 +189,8 @@ struct ArchiveReminderView: View {
                         .tracking(-0.4)
                         .foregroundStyle(Color.crabInk)
                     Text(CrabL10n.format(
-                        "自动发现 %d 个项目 · %d 个超过 6 个月未使用 · %d 个大项目",
-                        "%d projects found · %d unused for over 6 months · %d large",
+                        "自动发现 %d 个项目 · %d 个超过 6 个月未修改 · %d 个大项目",
+                        "%d projects found · %d unmodified for over 6 months · %d large",
                         model.projectInventory.projects.count,
                         inactiveProjectCount,
                         largeProjectCount
@@ -210,7 +210,7 @@ struct ArchiveReminderView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(Color.crabPurple)
-                    .disabled(isMovingProjects || visibleProjects.isEmpty)
+                    .disabled(isMovingProjects || !visibleProjects.contains(where: \.canClean))
                 }
                 Button {
                     model.scanProjects(force: true)
@@ -324,7 +324,7 @@ struct ArchiveReminderView: View {
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.crabPurple)
-                    .disabled(isMovingProjects)
+                    .disabled(isMovingProjects || !group.projects.contains(where: \.canClean))
                 }
             }
             .padding(14)
@@ -382,7 +382,7 @@ struct ArchiveReminderView: View {
                     .frame(width: 30)
             }
             .buttonStyle(.plain)
-            .disabled(isMovingProjects)
+            .disabled(isMovingProjects || !project.canClean)
             .accessibilityLabel(isSelected(project)
                 ? CrabL10n.format("取消选择 %@", "Deselect %@", project.path.lastPathComponent)
                 : CrabL10n.format("选择 %@", "Select %@", project.path.lastPathComponent))
@@ -393,7 +393,7 @@ struct ArchiveReminderView: View {
                         .foregroundStyle(Color.crabInk)
                     if project.isInactive {
                         projectTag(
-                            CrabL10n.text("6 个月未使用", "Unused for 6 Months"),
+                            CrabL10n.text("6 个月未修改", "Unmodified for 6 Months"),
                             color: .orange
                         )
                     }
@@ -412,9 +412,15 @@ struct ArchiveReminderView: View {
                 Text(projectMetadata(project))
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
+                if !project.canClean {
+                    Text(CrabL10n.text("未能完整检查内容，已保护，不能清理", "Inspection incomplete · protected from cleanup"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                }
             }
             Spacer(minLength: 18)
-            Text(ByteCountFormatter.string(fromByteCount: Int64(project.logicalBytes), countStyle: .file))
+            Text((project.canClean ? "" : CrabL10n.text("已统计 ", "Measured "))
+                 + ByteCountFormatter.string(fromByteCount: Int64(project.logicalBytes), countStyle: .file))
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.crabInk)
             Button("在 Finder 中查看") {
@@ -655,7 +661,7 @@ private extension ProjectCleanupFilter {
     var title: String {
         switch self {
         case .all: CrabL10n.text("全部", "All")
-        case .inactive: CrabL10n.text("6 个月未使用", "Inactive 6 Months")
+        case .inactive: CrabL10n.text("6 个月未修改", "Unmodified 6 Months")
         case .large: CrabL10n.text("大项目", "Large")
         case .recent: CrabL10n.text("最近使用", "Recently Used")
         }

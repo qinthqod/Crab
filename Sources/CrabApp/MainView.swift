@@ -82,6 +82,7 @@ struct MainView: View {
     }
 
     private func loadSelectedModeIfNeeded(_ mode: AppModel.Mode) {
+        guard mode == model.mode else { return }
         switch mode {
         case .cache:
             break

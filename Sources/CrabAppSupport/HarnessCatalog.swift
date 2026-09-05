@@ -36,7 +36,7 @@ public struct HarnessDefinition: Identifiable, Equatable, Hashable, Sendable {
 
 public enum HarnessCatalog {
     public static let supported: [HarnessDefinition] = [
-        HarnessDefinition(appID: "com.openai.codex", displayName: "Codex", bundleNames: ["ChatGPT.app", "Codex.app"], residueSupportDirectoryNames: ["Codex"]),
+        HarnessDefinition(appID: "com.openai.codex", displayName: "Codex", bundleNames: ["ChatGPT.app", "Codex.app"], residueSupportDirectoryNames: ["Codex"], commandLine: HarnessCommandLineDefinition(executableNames: ["codex"], npmPackageName: "@openai/codex")),
         HarnessDefinition(appID: "com.openai.chat", displayName: "ChatGPT", bundleNames: ["ChatGPT.app"], residueSupportDirectoryNames: ["ChatGPT"]),
         HarnessDefinition(appID: "com.anthropic.claudefordesktop", displayName: "Claude", bundleNames: ["Claude.app"], residueSupportDirectoryNames: ["Claude"]),
         HarnessDefinition(appID: "com.todesktop.230313mzl4w4u92", displayName: "Cursor", bundleNames: ["Cursor.app"], residueSupportDirectoryNames: ["Cursor"]),

@@ -55,6 +55,15 @@ struct HarnessOverviewView: View {
                 .interactiveDismissDisabled(true)
         }
         .onAppear(perform: refreshRunningAppIDs)
+        .task {
+            while !Task.isCancelled {
+                let cliIDs = await Task.detached(priority: .utility) { HarnessCLIActivity.runningAppIDs() }.value
+                guard !Task.isCancelled else { return }
+                runningAppIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+                    .union(cliIDs ?? [])
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            }
+        }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(
             for: NSWorkspace.didLaunchApplicationNotification
         )) { _ in

@@ -31,6 +31,7 @@ public struct SafeScanner: Sendable {
     public init() {}
 
     public func scan(rule: AIFileRule, homeURL: URL) throws -> ScanCandidate {
+        try Task.checkCancellation()
         try RuleValidator.validate(rule)
 
         let normalizedHome = homeURL.standardizedFileURL
@@ -105,6 +106,7 @@ public struct SafeScanner: Sendable {
         }
 
         for child in children {
+            try Task.checkCancellation()
             let childMetadata = try metadata(at: child, rejectSymbolicLink: false)
             if childMetadata.st_mode & S_IFMT == S_IFLNK {
                 continue
