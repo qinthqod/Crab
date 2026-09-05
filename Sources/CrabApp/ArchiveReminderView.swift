@@ -159,6 +159,14 @@ struct ArchiveReminderView: View {
     private var resultState: some View {
         VStack(spacing: 0) {
             resultHeader
+            if model.projectInventory.hasIncompleteResults {
+                Label(partialScanMessage, systemImage: "info.circle")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 14)
+            }
             if model.projectInventory.projects.isEmpty {
                 emptyState
             } else if groupedProjects.isEmpty {
@@ -413,7 +421,9 @@ struct ArchiveReminderView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                 if !project.canClean {
-                    Text(CrabL10n.text("未能完整检查内容，已保护，不能清理", "Inspection incomplete · protected from cleanup"))
+                    Text(project.cleanupBlockReason == .inspectionLimitReached
+                        ? CrabL10n.text("达到检查上限，仅显示已统计大小，不能清理", "Inspection limit reached · partial size · cleanup disabled")
+                        : CrabL10n.text("未能完整检查内容，已保护，不能清理", "Inspection incomplete · protected from cleanup"))
                         .font(.system(size: 11))
                         .foregroundStyle(.orange)
                 }
@@ -481,10 +491,14 @@ struct ArchiveReminderView: View {
             Image(systemName: "folder.badge.questionmark")
                 .font(.system(size: 46))
                 .foregroundStyle(Color.crabPurple)
-            Text("没有发现已关联的项目")
+            Text(model.projectInventory.hasIncompleteResults
+                ? CrabL10n.text("已检查范围内暂未发现项目", "No Projects Found in the Inspected Area")
+                : CrabL10n.text("没有发现已关联的项目", "No Associated Projects Found"))
                 .font(.system(size: 23, weight: .bold))
                 .foregroundStyle(Color.crabInk)
-            Text("Crab 已检查本机用户目录，但没有发现与已安装 AI 应用匹配的明确项目标记。")
+            Text(model.projectInventory.hasIncompleteResults
+                ? CrabL10n.text("部分目录尚未完成检查，这不表示本机没有关联项目。", "Some directories were not fully inspected. Associated projects may still exist.")
+                : CrabL10n.text("Crab 已检查本机用户目录，但没有发现与已安装 AI 应用匹配的明确项目标记。", "No explicit project markers matching installed AI apps were found in the inspected user directories."))
                 .font(.system(size: 14))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -494,6 +508,23 @@ struct ArchiveReminderView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.bottom, 48)
+    }
+
+    private var partialScanMessage: String {
+        if model.projectInventory.discoveryWasLimited {
+            return CrabL10n.text(
+                "已保留发现的项目；部分目录达到扫描上限，结果可能不完整。只有完成安全检查的项目才能清理。",
+                "Discovered projects are retained. A discovery limit was reached, so results may be incomplete. Only fully verified projects can be cleaned.")
+        }
+        if model.projectInventory.inspectionLimitedProjectCount > 0 {
+            return CrabL10n.format(
+                "%d 个项目达到内容检查上限，已单独保护；其他完整检查的项目仍可选择清理。",
+                "%d projects reached the inspection limit and are protected. Other fully inspected projects can still be selected.",
+                model.projectInventory.inspectionLimitedProjectCount)
+        }
+        return CrabL10n.text(
+            "部分内容无法完整检查，相关项目已保护；当前仅显示可确认的结果。",
+            "Some content could not be fully inspected. Affected projects are protected; only confirmed results are shown.")
     }
 
     private func failureState(_ message: String) -> some View {

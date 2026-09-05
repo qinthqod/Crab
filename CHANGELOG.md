@@ -5,6 +5,22 @@ All notable changes to Crab are documented here. This project follows
 
 ## Unreleased
 
+## [0.2.6] - 2026-09-06
+
+### Fixed
+
+- Project discovery and full-content inspection now use separate bounded
+  budgets. Dependencies and build output no longer consume the discovery
+  budget and cause the entire scan to fail at 250,000 entries.
+- Reaching a project inspection limit protects that project while retaining
+  other results. Discovery limits retain known projects and still process
+  independently evidenced roots, with a visible incomplete-results notice.
+- Incompletely inspected projects remain unselectable and cannot enter a
+  cleanup plan or pass Trash revalidation. Partial sizes are labeled, and
+  partial evidence does not produce inactivity labels.
+- Partial discovery is not reported as an application's complete project
+  count. Empty partial results no longer imply that no projects exist.
+
 ## [0.2.5] - 2026-09-06
 
 ### Fixed

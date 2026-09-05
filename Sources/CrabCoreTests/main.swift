@@ -20,6 +20,100 @@ private func expect(
 }
 
 private let tests: [(String, () throws -> Void)] = [
+    ("A project inspection limit protects only that project and continues discovery", {
+        try withTemporaryHome { home in
+            let large = home.appendingPathComponent("A-Large")
+            let small = home.appendingPathComponent("B-Small")
+            for project in [large, small] {
+                try FileManager.default.createDirectory(at: project.appendingPathComponent(".git"), withIntermediateDirectories: true)
+                try Data().write(to: project.appendingPathComponent("AGENTS.md"))
+            }
+            let dependencies = large.appendingPathComponent("node_modules")
+            try FileManager.default.createDirectory(at: dependencies, withIntermediateDirectories: true)
+            for index in 0..<20 { try Data([1]).write(to: dependencies.appendingPathComponent("file-\(index)")) }
+            try setModificationDateRecursively(large, to: Date().addingTimeInterval(-200 * 86_400))
+            let scanner = ProjectInventoryScanner(maxProjectEntries: 5)
+            let result = try scanner.scan(rootURLs: [home], rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]), installedAppIDs: ["com.openai.codex"])
+            try expect(result.projects.count == 2 && !result.discoveryWasLimited, "A large project must not prevent discovering its sibling")
+            try expect(result.inspectionLimitedProjectCount == 1 && result.hasIncompleteResults, "Partial inspection must be explicit")
+            guard let blocked = result.projects.first, let complete = result.projects.last else { throw TestFailure(description: "Missing fixtures") }
+            try expect(!blocked.canClean && !blocked.isInactive && complete.canClean, "Only complete evidence may authorize cleanup or inactivity labels")
+            var selection = ProjectCleanupSelection(inventory: result)
+            selection.setSelected(result.projects, selected: true)
+            try expect(selection.selectedProjects == [complete], "Bulk selection must skip a limited project")
+            try expectThrows("A limited project must not enter a direct cleanup plan") {
+                _ = try ProjectCleanupPlanBuilder().build(inventory: result, selectedProjectIDs: [blocked.id], homeURL: home)
+            }
+            try expectThrows("A limited snapshot must not pass revalidation") {
+                _ = try scanner.revalidateForTrash(blocked, homeURL: home, scannedAt: result.scannedAt)
+            }
+        }
+    }),
+    ("Global inspection budget remains bounded without discarding results", {
+        try withTemporaryHome { home in
+            for name in ["A", "B", "C"] {
+                let project = home.appendingPathComponent(name)
+                try FileManager.default.createDirectory(at: project.appendingPathComponent(".git"), withIntermediateDirectories: true)
+                try Data().write(to: project.appendingPathComponent("AGENTS.md"))
+            }
+            let result = try ProjectInventoryScanner(maxInspectionEntries: 3).scan(rootURLs: [home],
+                rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]), installedAppIDs: ["com.openai.codex"])
+            try expect(result.projects.count == 3, "Discover all roots even if aggregate content inspection is exhausted")
+            try expect(result.projects.first?.canClean == true && result.inspectionLimitedProjectCount == 2,
+                "Retain complete results and clearly block remaining inspections")
+            try expect(result.projects.last?.logicalBytes == 0 && result.projects.last?.canClean == false,
+                "Unmeasured projects must not be offered as cleanable empty folders")
+        }
+    }),
+    ("Discovery limit retains results and still accepts independently evidenced roots", {
+        try withTemporaryHome { home in
+            let first = home.appendingPathComponent("A-Marked")
+            let indexed = home.appendingPathComponent("Z-Indexed")
+            try FileManager.default.createDirectory(at: first.appendingPathComponent(".git"), withIntermediateDirectories: true)
+            try Data().write(to: first.appendingPathComponent("AGENTS.md"))
+            try FileManager.default.createDirectory(at: indexed, withIntermediateDirectories: true)
+            try Data([1, 2]).write(to: indexed.appendingPathComponent("result.txt"))
+            let result = try ProjectInventoryScanner(maxEntries: 1).scan(rootURLs: [home],
+                rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]), installedAppIDs: ["com.openai.codex"],
+                evidencedProjectURLsByAppID: ["com.openai.codex": [indexed]])
+            try expect(result.discoveryWasLimited && result.hasIncompleteResults, "Discovery exhaustion must produce explicit partial results")
+            try expect(result.projects.count == 2 && result.projects.allSatisfy(\.canClean),
+                "Fully inspected marked and indexed projects must remain usable")
+            let usage = HarnessUsageScanner().scan(installedAppIDs: ["com.openai.codex"], projectInventory: result, homeURL: home)
+            try expect(usage["com.openai.codex"]?.projectCount == nil,
+                "A partial discovery must not be reported as an application's complete project count")
+        }
+    }),
+    ("An empty limited discovery never claims a complete inventory", {
+        try withTemporaryHome { home in
+            try FileManager.default.createDirectory(at: home.appendingPathComponent("Unrelated/Nested"), withIntermediateDirectories: true)
+            let rules = ProjectAssociationCatalog.rules(for: ["com.openai.codex"])
+            let result = try ProjectInventoryScanner(maxEntries: 1).scan(rootURLs: [home], rules: rules, installedAppIDs: ["com.openai.codex"])
+            try expect(result.projects.isEmpty && result.hasIncompleteResults, "Empty partial results must not imply there are no projects")
+            try expectThrows("Invalid budgets must still fail") {
+                _ = try ProjectInventoryScanner(maxProjectEntries: 0).scan(rootURLs: [home], rules: rules, installedAppIDs: ["com.openai.codex"])
+            }
+        }
+    }),
+    ("Project dependency inspection does not exhaust project discovery", {
+        try withTemporaryHome { home in
+            let large = home.appendingPathComponent("A-Large")
+            let small = home.appendingPathComponent("B-Small")
+            for project in [large, small] {
+                try FileManager.default.createDirectory(at: project.appendingPathComponent(".git"), withIntermediateDirectories: true)
+                try Data().write(to: project.appendingPathComponent("AGENTS.md"))
+            }
+            let build = large.appendingPathComponent("build")
+            try FileManager.default.createDirectory(at: build, withIntermediateDirectories: true)
+            for index in 0..<30 {
+                try Data([1]).write(to: build.appendingPathComponent("artifact-\(index)"))
+            }
+            let result = try ProjectInventoryScanner(maxEntries: 12).scan(rootURLs: [home],
+                rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]), installedAppIDs: ["com.openai.codex"])
+            try expect(result.projects.count == 2, "Dependency inspection must not consume the discovery budget or hide the next project")
+            try expect(result.projects.first?.logicalBytes == 30, "Complete dependency sizes must still be counted")
+        }
+    }),
     ("Codex CLI npm installation is detected without a desktop app", {
         try withTemporaryHome { home in
             let bin = home.appendingPathComponent("bin")
@@ -140,9 +234,9 @@ private let tests: [(String, () throws -> Void)] = [
             "The project cleanup menu symbol must exist on the supported macOS version"
         )
     }),
-    ("Version identifies the 0.2.5 release", {
+    ("Version identifies the 0.2.6 release", {
         try expect(
-            CrabCore.version == "0.2.5",
+            CrabCore.version == "0.2.6",
             "Expected release version, got \(CrabCore.version)"
         )
     }),

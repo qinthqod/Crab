@@ -78,7 +78,10 @@ public struct HarnessUsageScanner: Sendable {
 
         return Dictionary(uniqueKeysWithValues: installedAppIDs.map { appID in
             let conversationCount = conversationCount(for: appID, homeURL: homeURL)
-            let inventoryProjectCount = projectInventory == nil ? nil : projectCounts[appID, default: 0]
+            let inventoryProjectCount: Int? = projectInventory.flatMap { inventory in
+                guard !inventory.discoveryWasLimited, inventory.skippedDirectoryCount == 0 else { return nil }
+                return projectCounts[appID, default: 0]
+            }
             return (appID, HarnessUsageSummary(
                 appID: appID,
                 projectCount: appID == "com.openai.codex"
