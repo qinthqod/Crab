@@ -47,8 +47,9 @@ and all available versions.
   are labelled for attention; labels never auto-select or restrict them.
 - **Bilingual UI** — follows the macOS language by default and supports an explicit
   Chinese or English preference.
-- **In-app Updates** — checks Crab's official GitHub Releases and, after explicit
-  confirmation, verifies and installs a matching archive.
+- **In-app Updates** — checks Crab's official GitHub Release feed once when the
+  app starts. A quiet top-right notice appears only when a verified newer
+  version is available; installation still requires explicit confirmation.
 
 Current rules cover installed products such as ChatGPT, Claude and Claude Code,
 Cursor, Codex, DeepSeek Harness, Windsurf, TRAE, Zed, Ollama, and Doubao variants.

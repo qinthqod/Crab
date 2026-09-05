@@ -31,6 +31,7 @@ final class CrabSettingsModel: ObservableObject {
     @Published private(set) var updateState: CrabAppUpdateStatus = .idle
     @Published private(set) var updateActionState: UpdateActionState = .idle
     @Published var operationError: String?
+    private var launchUpdateCheckState = CrabLaunchUpdateCheckState()
 
     init() {
         refreshLaunchAtLoginStatus()
@@ -44,6 +45,11 @@ final class CrabSettingsModel: ObservableObject {
     var currentBuild: String? {
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
         return build?.isEmpty == false ? build : nil
+    }
+
+    var availableUpdateOffer: CrabAppUpdateOffer? {
+        guard !updateActionState.isBusy else { return nil }
+        return CrabLaunchUpdateCheckState.availableOffer(from: updateState)
     }
 
     func refreshLaunchAtLoginStatus() {
@@ -92,6 +98,11 @@ final class CrabSettingsModel: ObservableObject {
                 feedURL: feedURL
             )
         }
+    }
+
+    func checkForUpdatesAtLaunch() {
+        guard launchUpdateCheckState.beginCheckIfNeeded() else { return }
+        checkForUpdates()
     }
 
     func installAvailableUpdate() {

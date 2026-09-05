@@ -2,7 +2,7 @@ import CrabAppSupport
 import SwiftUI
 
 struct CrabSettingsView: View {
-    @StateObject private var settings = CrabSettingsModel()
+    @ObservedObject var settings: CrabSettingsModel
     @AppStorage(CrabLanguagePreference.defaultsKey)
     private var languagePreference = CrabLanguagePreference.system.rawValue
 

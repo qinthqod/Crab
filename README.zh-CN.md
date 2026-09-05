@@ -34,7 +34,7 @@ Crab 需要 Apple Silicon 与 macOS 14 或更高版本。安装前可下载
 - **项目清理** — 自动发现项目并关联到 AI 应用；用户明确选择并二次确认后，才可将项目移入废纸篓。
 - **风险提示** — 为超过 6 个月未使用和不小于 1 GB 的项目添加标签；标签不会自动选择或限制项目。
 - **双语界面** — 默认跟随 macOS 系统语言，也可以明确选择中文或英文。
-- **应用内更新** — 检查 Crab 官方 GitHub Releases；用户确认后验证并安装匹配的更新包。
+- **应用内更新** — Crab 每次启动时检查一次官方 GitHub Release 更新源；仅发现经过验证的新版本时在右上角提示，仍需用户明确确认后才会校验并安装。
 
 当前规则覆盖 ChatGPT、Claude、Claude Code、Cursor、Codex、DeepSeek Harness、
 Windsurf、TRAE、Zed、Ollama 和豆包系列等已安装产品。缺少已审核缓存规则的产品

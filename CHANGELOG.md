@@ -15,6 +15,9 @@ All notable changes to Crab are documented here. This project follows
 
 ### Added
 
+- Crab now checks its official update feed once per application launch and
+  shows a non-blocking top-right notice only when a verified newer release is
+  available. The notice opens the existing user-confirmed in-app update flow.
 - Runtime Optimization now reports local disk, memory-pressure, swap, uptime,
   thermal, sustained-process, and mounted-disk-image findings before showing
   maintenance results.

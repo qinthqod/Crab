@@ -3,6 +3,7 @@ import SwiftUI
 struct MainView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var desktopPresence: DesktopPresenceController
+    @ObservedObject var settings: CrabSettingsModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -59,6 +60,7 @@ struct MainView: View {
         }
         .onAppear {
             NSApplication.shared.activate(ignoringOtherApps: true)
+            settings.checkForUpdatesAtLaunch()
             loadSelectedModeIfNeeded(model.mode)
         }
         .onChange(of: model.mode) { _, mode in
@@ -101,6 +103,7 @@ struct MainView: View {
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.crabInk)
             }
+            .frame(width: 150, alignment: .leading)
 
             Spacer()
 
@@ -113,14 +116,58 @@ struct MainView: View {
 
             Spacer()
 
-            Color.clear
-                .frame(width: 76, height: 1)
-                .accessibilityHidden(true)
+            Group {
+                if let offer = settings.availableUpdateOffer {
+                    SettingsLink {
+                        Label {
+                            Text(CrabL10n.format(
+                                "更新 %@",
+                                "Update %@",
+                                normalizedVersion(offer.latestVersion)
+                            ))
+                        } icon: {
+                            Image(systemName: "arrow.down.circle.fill")
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.crabPurple)
+                        .padding(.horizontal, 11)
+                        .frame(height: 30)
+                        .background(Color.crabLavender, in: Capsule())
+                        .overlay {
+                            Capsule().stroke(Color.crabPurple.opacity(0.16))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help(CrabL10n.text(
+                        "打开设置以下载并安装更新",
+                        "Open Settings to download and install the update"
+                    ))
+                    .accessibilityLabel(CrabL10n.format(
+                        "发现 Crab 新版本 %@",
+                        "Crab version %@ is available",
+                        normalizedVersion(offer.latestVersion)
+                    ))
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                } else {
+                    Color.clear
+                        .frame(height: 1)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(width: 150, alignment: .trailing)
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 1),
+                value: settings.availableUpdateOffer?.latestVersion
+            )
         }
         .padding(.horizontal, 24)
         .frame(height: 58)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isHeader)
+    }
+
+    private func normalizedVersion(_ version: String) -> String {
+        version.hasPrefix("v") ? String(version.dropFirst()) : version
     }
 
     private var isLoading: Bool {
