@@ -169,7 +169,7 @@ public struct ProjectInventoryScanner: Sendable {
                 context.projects[index] = ProjectInventoryItem(
                     path: project.path,
                     identity: project.identity,
-                    primaryAppID: project.primaryAppID,
+                    primaryAppID: appIDs.sorted()[0],
                     relatedAppIDs: relatedAppIDs,
                     latestActivity: project.latestActivity,
                     logicalBytes: project.logicalBytes,

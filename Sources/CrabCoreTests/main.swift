@@ -2039,6 +2039,34 @@ private let tests: [(String, () throws -> Void)] = [
             )
         }
     }),
+    ("Codex indexed ownership wins without duplicating a shared project root", {
+        try withTemporaryHome { home in
+            let shared = home.appendingPathComponent("Projects/Shared", isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: shared.appendingPathComponent(".git", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+            try Data().write(to: shared.appendingPathComponent("CLAUDE.md"))
+            let installed: Set<String> = ["ai.anthropic.claude-code", "com.openai.codex"]
+
+            let result = try ProjectInventoryScanner(maxEntries: 2_000).scan(
+                rootURLs: [home],
+                rules: ProjectAssociationCatalog.rules(for: installed),
+                installedAppIDs: installed,
+                evidencedProjectURLsByAppID: ["com.openai.codex": [shared]]
+            )
+
+            try expect(result.projects.count == 1, "A shared physical root must never appear twice")
+            try expect(
+                result.projects.first?.primaryAppID == "com.openai.codex",
+                "Codex indexed ownership should determine the project-cleanup group"
+            )
+            try expect(
+                result.projects.first?.relatedAppIDs == ["ai.anthropic.claude-code", "com.openai.codex"],
+                "Secondary application relationships should remain available for usage metrics"
+            )
+        }
+    }),
     ("Project application groups start collapsed and expand independently", {
         var disclosure = ProjectGroupDisclosureState()
 
