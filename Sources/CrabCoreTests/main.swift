@@ -1159,6 +1159,36 @@ private let tests: [(String, () throws -> Void)] = [
             )
         }
     }),
+    ("Harness usage counts Codex logical projects from indexed metadata", {
+        try withTemporaryHome { home in
+            let firstRoot = home.appendingPathComponent("Projects/First", isDirectory: true)
+            let secondRoot = home.appendingPathComponent("Projects/Second", isDirectory: true)
+            try FileManager.default.createDirectory(at: firstRoot, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: secondRoot, withIntermediateDirectories: true)
+            try makeCodexProjectStateDatabase(
+                in: home,
+                projects: [
+                    (id: "project-1", root: firstRoot),
+                    (id: "project-2", root: firstRoot),
+                    (id: "project-3", root: secondRoot),
+                ]
+            )
+
+            let metadata = CodexProjectMetadataScanner().scan(homeURL: home)
+            let summaries = HarnessUsageScanner().scan(
+                installedAppIDs: ["com.openai.codex"],
+                projectInventory: nil,
+                homeURL: home
+            )
+
+            try expect(metadata?.logicalProjectCount == 3, "Every Codex logical project should count once")
+            try expect(metadata?.rootURLs == [firstRoot, secondRoot], "Codex project roots should be deduplicated")
+            try expect(
+                summaries["com.openai.codex"]?.projectCount == 3,
+                "Application usage should not depend on an earlier project-cleanup scan"
+            )
+        }
+    }),
     ("Harness usage hides Codex Tokens when no trusted metadata database exists", {
         try withTemporaryHome { home in
             let summaries = HarnessUsageScanner().scan(
@@ -2898,6 +2928,45 @@ private func makeCodexStateDatabase(in home: URL, tokenCounts: [UInt64]) throws 
     guard process.terminationStatus == 0 else {
         let message = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "unknown sqlite error"
         throw TestFailure(description: "Could not create Codex metadata fixture: \(message)")
+    }
+}
+
+private func makeCodexProjectStateDatabase(
+    in home: URL,
+    projects: [(id: String, root: URL)]
+) throws {
+    let codexDirectory = home.appendingPathComponent(".codex", isDirectory: true)
+    try FileManager.default.createDirectory(at: codexDirectory, withIntermediateDirectories: true)
+    let database = codexDirectory.appendingPathComponent("state_5.sqlite")
+    let projectRows = projects.enumerated().map { index, project in
+        "('\(project.id)', 'Project \(index)', '{}', \(index), 0, 0)"
+    }.joined(separator: ",")
+    let rootRows = projects.enumerated().map { index, project in
+        let escapedPath = project.root.path.replacingOccurrences(of: "'", with: "''")
+        return "('\(project.id)', \(index), '\(escapedPath)')"
+    }.joined(separator: ",")
+    let statement = """
+    CREATE TABLE projects (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, metadata TEXT NOT NULL,
+        position INTEGER NOT NULL, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL
+    );
+    CREATE TABLE project_roots (
+        project_id TEXT NOT NULL, position INTEGER NOT NULL, path TEXT NOT NULL,
+        PRIMARY KEY (project_id, position)
+    );
+    INSERT INTO projects VALUES \(projectRows);
+    INSERT INTO project_roots VALUES \(rootRows);
+    """
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+    process.arguments = [database.path, statement]
+    let errors = Pipe()
+    process.standardError = errors
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        let message = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "unknown sqlite error"
+        throw TestFailure(description: "Could not create Codex project metadata fixture: \(message)")
     }
 }
 

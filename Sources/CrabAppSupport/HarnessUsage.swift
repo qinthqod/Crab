@@ -71,12 +71,18 @@ public struct HarnessUsageScanner: Sendable {
                 projectCounts[appID, default: 0] += 1
             }
         }
+        let codexProjectCount = installedAppIDs.contains("com.openai.codex")
+            ? CodexProjectMetadataScanner().scan(homeURL: homeURL)?.logicalProjectCount
+            : nil
 
         return Dictionary(uniqueKeysWithValues: installedAppIDs.map { appID in
             let conversationCount = conversationCount(for: appID, homeURL: homeURL)
+            let inventoryProjectCount = projectInventory == nil ? nil : projectCounts[appID, default: 0]
             return (appID, HarnessUsageSummary(
                 appID: appID,
-                projectCount: projectInventory == nil ? nil : projectCounts[appID, default: 0],
+                projectCount: appID == "com.openai.codex"
+                    ? codexProjectCount ?? inventoryProjectCount
+                    : inventoryProjectCount,
                 conversationCount: conversationCount,
                 tokenCount: tokenCount(for: appID, homeURL: homeURL)
             ))
@@ -178,6 +184,118 @@ public struct HarnessUsageScanner: Sendable {
                 continue
             }
         }
+        return true
+    }
+}
+
+public struct CodexProjectMetadata: Equatable, Sendable {
+    public let logicalProjectCount: Int
+    public let rootURLs: [URL]
+
+    public init(logicalProjectCount: Int, rootURLs: [URL]) {
+        self.logicalProjectCount = logicalProjectCount
+        self.rootURLs = rootURLs
+    }
+}
+
+public struct CodexProjectMetadataScanner: Sendable {
+    private let sqliteExecutableURL: URL
+    private let maximumDatabaseBytes: Int64
+    private let maximumRootCount: Int
+
+    public init(
+        sqliteExecutableURL: URL = URL(fileURLWithPath: "/usr/bin/sqlite3"),
+        maximumDatabaseBytes: Int64 = 512 * 1_024 * 1_024,
+        maximumRootCount: Int = 10_000
+    ) {
+        self.sqliteExecutableURL = sqliteExecutableURL
+        self.maximumDatabaseBytes = maximumDatabaseBytes
+        self.maximumRootCount = maximumRootCount
+    }
+
+    public func scan(homeURL: URL) -> CodexProjectMetadata? {
+        guard maximumDatabaseBytes > 0, maximumRootCount > 0 else { return nil }
+        let candidates = [
+            homeURL.appendingPathComponent(".codex/state_5.sqlite"),
+            homeURL.appendingPathComponent(".codex/sqlite/state_5.sqlite"),
+        ]
+        for databaseURL in candidates where isTrustedDatabase(databaseURL) {
+            if let metadata = readMetadata(from: databaseURL) {
+                return metadata
+            }
+        }
+        return nil
+    }
+
+    private func readMetadata(from databaseURL: URL) -> CodexProjectMetadata? {
+        let process = Process()
+        process.executableURL = sqliteExecutableURL
+        process.arguments = [
+            "-readonly",
+            "-noheader",
+            databaseURL.path,
+            "SELECT 'C|' || COUNT(*) FROM projects; "
+                + "SELECT 'R|' || hex(path) FROM project_roots GROUP BY path ORDER BY hex(path) LIMIT \(maximumRootCount + 1);",
+        ]
+        process.standardInput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        let output = Pipe()
+        process.standardOutput = output
+
+        do {
+            try process.run()
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0,
+                  data.count <= 8 * 1_024 * 1_024,
+                  let text = String(data: data, encoding: .utf8)
+            else { return nil }
+            return parse(text)
+        } catch {
+            return nil
+        }
+    }
+
+    private func parse(_ output: String) -> CodexProjectMetadata? {
+        var logicalProjectCount: Int?
+        var rootPaths = Set<String>()
+        for line in output.split(whereSeparator: \Character.isNewline) {
+            if line.hasPrefix("C|"), let count = Int(line.dropFirst(2)), count >= 0 {
+                logicalProjectCount = count
+            } else if line.hasPrefix("R|"),
+                      let path = decodeHexPath(line.dropFirst(2)),
+                      path.hasPrefix("/") {
+                rootPaths.insert(URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.path)
+            } else {
+                return nil
+            }
+        }
+        guard let logicalProjectCount, rootPaths.count <= maximumRootCount else { return nil }
+        let rootURLs = rootPaths.sorted().map { URL(fileURLWithPath: $0, isDirectory: true) }
+        return CodexProjectMetadata(logicalProjectCount: logicalProjectCount, rootURLs: rootURLs)
+    }
+
+    private func decodeHexPath(_ value: Substring) -> String? {
+        guard value.count.isMultiple(of: 2) else { return nil }
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(value.count / 2)
+        var index = value.startIndex
+        while index < value.endIndex {
+            let next = value.index(index, offsetBy: 2)
+            guard let byte = UInt8(value[index..<next], radix: 16) else { return nil }
+            bytes.append(byte)
+            index = next
+        }
+        return String(bytes: bytes, encoding: .utf8)
+    }
+
+    private func isTrustedDatabase(_ databaseURL: URL) -> Bool {
+        var metadata = stat()
+        guard lstat(databaseURL.path, &metadata) == 0,
+              metadata.st_mode & S_IFMT == S_IFREG,
+              metadata.st_size > 0,
+              metadata.st_size <= maximumDatabaseBytes
+        else { return false }
         return true
     }
 }
