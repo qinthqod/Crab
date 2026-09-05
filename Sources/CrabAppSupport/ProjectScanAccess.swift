@@ -46,6 +46,9 @@ public enum ProjectScanAccessPolicy {
               selectedMetadata.st_ino == homeMetadata.st_ino
         else { throw ProjectScanAccessError.wrongDirectory }
 
-        return home
+        // Keep the exact URL supplied by NSOpenPanel (or restored from its
+        // bookmark). Reconstructing the same filesystem path creates a new URL
+        // value without the security-scoped grant attached to the original.
+        return selectedURL
     }
 }

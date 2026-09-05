@@ -1973,6 +1973,26 @@ private let tests: [(String, () throws -> Void)] = [
             }
         }
     }),
+    ("Project scan access preserves the exact URL granted by the folder picker", {
+        try withTemporaryHome { home in
+            var components = URLComponents(
+                url: home,
+                resolvingAgainstBaseURL: false
+            )!
+            components.fragment = "security-scope-fixture"
+            let selectedURL = components.url!
+
+            let authorized = try ProjectScanAccessPolicy.authorizedRoot(
+                selectedURL: selectedURL,
+                homeURL: home
+            )
+
+            try expect(
+                authorized.absoluteString == selectedURL.absoluteString,
+                "Validation must not replace the folder-picker URL and discard its security scope"
+            )
+        }
+    }),
     ("Project scan access rejects a symbolic link to the home directory", {
         try withTemporaryHome { home in
             let linkURL = home.deletingLastPathComponent()
