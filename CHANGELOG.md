@@ -5,6 +5,22 @@ All notable changes to Crab are documented here. This project follows
 
 ## Unreleased
 
+## [0.2.4] - 2026-09-05
+
+### Fixed
+
+- Codex project usage now comes from Codex's indexed logical projects and no
+  longer depends on running Project Cleanup first.
+- Project Cleanup now merges Codex's indexed project roots with marker-based
+  discovery, deduplicates shared physical directories, and gives explicit
+  Codex ownership precedence when grouping results.
+
+### Security
+
+- Codex integration reads only aggregate project counts and indexed root paths.
+  Missing, linked, protected, cross-volume, and out-of-Home paths fail closed;
+  project contents and conversation transcripts remain unread.
+
 ## [0.2.3] - 2026-09-05
 
 ### Fixed

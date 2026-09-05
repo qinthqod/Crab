@@ -17,10 +17,10 @@ managing storage created by AI applications and coding harnesses.
 
 ## Download
 
-[**Download Crab v0.2.3 for Apple Silicon →**](https://github.com/qinthqod/Crab/releases/download/v0.2.3/Crab-0.2.3-macOS-arm64.dmg)
+[**Download Crab v0.2.4 for Apple Silicon →**](https://github.com/qinthqod/Crab/releases/download/v0.2.4/Crab-0.2.4-macOS-arm64.dmg)
 
 Crab requires Apple Silicon and macOS 14 or later. Before installing, you can
-download the [SHA-256 checksum](https://github.com/qinthqod/Crab/releases/download/v0.2.3/SHA256SUMS.txt).
+download the [SHA-256 checksum](https://github.com/qinthqod/Crab/releases/download/v0.2.4/SHA256SUMS.txt).
 See [GitHub Releases](https://github.com/qinthqod/Crab/releases) for release notes
 and all available versions.
 
@@ -104,14 +104,14 @@ the [safe scan](docs/specs/safe-scan.md),
 ## Requirements
 
 - macOS 14 or later
-- Apple Silicon for the downloadable v0.2.3 beta
+- Apple Silicon for the downloadable v0.2.4 beta
 - Intel Macs can build Crab from source with a compatible Swift 6 toolchain
 - Swift 6 toolchain for source builds
 
 ## Install the Public Beta
 
-Download [`Crab-0.2.3-macOS-arm64.dmg`](https://github.com/qinthqod/Crab/releases/download/v0.2.3/Crab-0.2.3-macOS-arm64.dmg)
-and [`SHA256SUMS.txt`](https://github.com/qinthqod/Crab/releases/download/v0.2.3/SHA256SUMS.txt),
+Download [`Crab-0.2.4-macOS-arm64.dmg`](https://github.com/qinthqod/Crab/releases/download/v0.2.4/Crab-0.2.4-macOS-arm64.dmg)
+and [`SHA256SUMS.txt`](https://github.com/qinthqod/Crab/releases/download/v0.2.4/SHA256SUMS.txt),
 verify the checksum, open the disk image, and drag `Crab.app` onto the
 `Applications` shortcut. Eject the Crab disk image after copying finishes.
 
