@@ -31,14 +31,17 @@ public struct ProjectInventoryItem: Equatable, Sendable {
 
 ## Testing Strategy
 
-- RED tests first for explicit-marker association, path deduplication, installed-application filtering, symlink refusal, protected-directory skipping, metadata-only handling of unreadable file contents, inactivity classification, and traversal caps.
+- Regression tests cover explicit-marker association, path deduplication, installed-application filtering, project-root/ancestor symlink refusal, nested-link no-follow handling, protected-directory skipping, metadata-only inspection, and cancellation.
 - App state must enter loading only after Project Cleanup is selected and finish with grouped results whose eligible items start unselected.
 - Runtime verification covers selection, a disabled empty-selection action, a second confirmation, safe Trash execution, result feedback, and Finder reveal.
 
 ## Threat Model and Boundaries
 
 - Trust boundary: every filesystem entry and application marker is untrusted.
-- Always: use `lstat`, never follow symbolic links, stay on the starting filesystem, skip `~/Library`, Applications, Trash, cloud-sync and dependency/build directories, cap traversal, and run off the main actor.
+- Always: use `lstat`, never follow symbolic links, stay on the starting filesystem, and run off the main actor. Discovery excludes protected, cloud-sync and dependency/build locations; inspecting an identified project includes its dependencies and build output. Normal scans finish without default entry/depth caps; explicitly budgeted callers keep fail-closed partial-result behavior.
+- Cleanup boundary: only an associated project's actual directory tree is in scope. A nested symbolic-link entry belongs to that tree; its destination is not added to the scan or cleanup set, whether internal, external, missing, cyclic, or a media library. Record the raw destination and link identity without opening the target; count only the link's own metadata bytes. Actual ordinary files under the project root are still counted by normal traversal.
+- Before Trash, compare every nested link's path, raw destination, device, inode, size, modification time and change time against the scan snapshot, in addition to existing root/content checks. A replaced link invalidates the snapshot even if project totals are unchanged. Move the selected root directory through the existing Trash API, never move resolved link targets individually.
+- Root and ancestor links remain forbidden; an actual protected directory, mount boundary or unreadable content is not made safe by application association. Such exceptions include concrete locations and next-step advice. Normal nested links do not block selection or cleanup.
 - Association evidence: an exact AI marker such as `.claude`, `CLAUDE.md`, `.cursor`, `.cursorrules`, `.codex`, `AGENTS.md`, `.trae`, `.windsurf`, `.zed`, or `.dsh` must coexist with a project boundary such as `.git`, `Package.swift`, `package.json`, or another recognized build manifest. Never infer an application from project contents, and never treat the scan root itself as a project.
 - Multiple markers are retained as related applications; the most recently modified explicit marker determines the single primary group so a project path appears once.
 - Project Trash eligibility requires all of: automatic association with an installed AI application, explicit selection, scan evidence no older than ten minutes, a path strictly below the scanned home root, a directory identity match immediately before execution, and a second user confirmation. Inactivity for at least 180 days and size of at least 1 GB are informational labels only.
@@ -51,8 +54,8 @@ public struct ProjectInventoryItem: Equatable, Sendable {
 - Results contain each project path once and are grouped by an installed AI application.
 - Every row shows path, metadata-derived latest activity, approximate logical size, and an inactive indicator after 180 days.
 - Unreadable/protected entries are skipped without blocking the complete scan.
-- Recent projects remain view-only. Inactive projects can be selected individually or by application and moved to the macOS Trash after a second confirmation.
-- A changed, missing, linked, expired, outside-root, protected, cloud-backed, or otherwise ineligible project is skipped or refused rather than moved.
+- Both recent and inactive projects can be explicitly selected and moved to Trash after a second confirmation; age and size are labels, not permission to delete.
+- A changed, missing, root-linked, expired, outside-root, protected, cloud-backed, or otherwise ineligible project is skipped or refused with actionable advice. A valid associated project containing only ordinary nested links remains eligible.
 - Cache cleanup and application uninstall safety boundaries remain unchanged.
 
 ## Open Questions

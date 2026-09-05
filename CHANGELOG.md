@@ -5,6 +5,28 @@ All notable changes to Crab are documented here. This project follows
 
 ## Unreleased
 
+## [0.2.8] - 2026-09-06
+
+### Fixed
+
+- Normal symbolic links inside an associated project no longer block whole-project
+  cleanup. Only the link entry moves with the project; linked external components
+  are neither traversed nor included in the project's cleanup size.
+- Pre-Trash validation now compares every nested link's path, destination and
+  identity, including change timestamps. Replacing a link invalidates the old
+  snapshot even when aggregate size, file count and latest activity are unchanged.
+- Project roots and ancestors must still be real directories. Protected content,
+  unreadable entries and changed directories remain fail-closed.
+
+### Added
+
+- A cleanup-scope view explains nested links and shows their locations and raw
+  destinations. Genuine inspection issues include concrete locations, actionable
+  advice, Finder reveal and a recheck button.
+- Regression coverage for dependency links, dangling and cyclic links, external
+  media targets, link replacement, ownership merging and unchanged external data
+  after moving a fixture project directory.
+
 ## [0.2.7] - 2026-09-06
 
 ### Fixed

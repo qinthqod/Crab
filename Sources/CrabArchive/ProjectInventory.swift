@@ -23,6 +23,9 @@ public struct ProjectInventoryItem: Identifiable, Equatable, Sendable {
     public let fileCount: UInt64
     public let isInactive: Bool
     public internal(set) var cleanupBlockReason: ProjectCleanupBlockReason? = nil
+    public internal(set) var inspectionIssues: [ProjectInspectionIssue] = []
+    public internal(set) var inspectionIssueCount: Int = 0
+    public internal(set) var symbolicLinks: [ProjectSymbolicLink] = []
 
     public var canClean: Bool { cleanupBlockReason == nil }
 
@@ -44,6 +47,39 @@ public struct ProjectInventoryProgress: Equatable, Sendable {
     public var inspectedProjectCount: Int = 0
 
     public init() {}
+}
+
+/// Metadata for actionable diagnostics. Reading the destination does not follow a link.
+public struct ProjectInspectionIssue: Identifiable, Equatable, Sendable {
+    public let path: URL
+    public let reason: ProjectCleanupBlockReason
+    public let linkDestination: String?
+    public var id: URL { path }
+}
+
+/// The link entry belongs to the project; its target is never traversed.
+public struct ProjectSymbolicLink: Equatable, Sendable {
+    public let path: URL
+    public let destination: String
+    private let device: UInt64
+    private let inode: UInt64
+    private let byteCount: Int64
+    private let modifiedSeconds: Int
+    private let modifiedNanoseconds: Int
+    private let changedSeconds: Int
+    private let changedNanoseconds: Int
+
+    init(path: URL, destination: String, metadata: stat) {
+        self.path = path
+        self.destination = destination
+        device = UInt64(metadata.st_dev)
+        inode = UInt64(metadata.st_ino)
+        byteCount = metadata.st_size
+        modifiedSeconds = metadata.st_mtimespec.tv_sec
+        modifiedNanoseconds = metadata.st_mtimespec.tv_nsec
+        changedSeconds = metadata.st_ctimespec.tv_sec
+        changedNanoseconds = metadata.st_ctimespec.tv_nsec
+    }
 }
 
 public struct ProjectInventoryResult: Equatable, Sendable {
@@ -227,7 +263,10 @@ public struct ProjectInventoryScanner: Sendable {
                     logicalBytes: project.logicalBytes,
                     fileCount: project.fileCount,
                     isInactive: project.isInactive,
-                    cleanupBlockReason: project.cleanupBlockReason
+                    cleanupBlockReason: project.cleanupBlockReason,
+                    inspectionIssues: project.inspectionIssues,
+                    inspectionIssueCount: project.inspectionIssueCount,
+                    symbolicLinks: project.symbolicLinks
                 )
                 continue
             }
@@ -251,7 +290,10 @@ public struct ProjectInventoryScanner: Sendable {
                 logicalBytes: totals.logicalBytes,
                 fileCount: totals.fileCount,
                 isInactive: !totals.inspectionIncomplete && totals.latestActivity < cutoff,
-                cleanupBlockReason: totals.cleanupBlockReason
+                cleanupBlockReason: totals.cleanupBlockReason,
+                inspectionIssues: totals.issues,
+                inspectionIssueCount: totals.issueCount,
+                symbolicLinks: totals.symbolicLinks
             ))
         }
     }
@@ -348,7 +390,10 @@ public struct ProjectInventoryScanner: Sendable {
                     logicalBytes: totals.logicalBytes,
                     fileCount: totals.fileCount,
                     isInactive: !totals.inspectionIncomplete && totals.latestActivity < cutoff,
-                    cleanupBlockReason: totals.cleanupBlockReason
+                    cleanupBlockReason: totals.cleanupBlockReason,
+                    inspectionIssues: totals.issues,
+                    inspectionIssueCount: totals.issueCount,
+                    symbolicLinks: totals.symbolicLinks
                 ))
             }
 
@@ -432,7 +477,9 @@ public struct ProjectInventoryScanner: Sendable {
         guard totals.identity == project.identity,
               totals.latestActivity == project.latestActivity,
               totals.logicalBytes == project.logicalBytes,
-              totals.fileCount == project.fileCount
+              totals.fileCount == project.fileCount,
+              totals.symbolicLinks.sorted(by: { $0.path.path < $1.path.path })
+                == project.symbolicLinks.sorted(by: { $0.path.path < $1.path.path })
         else {
             throw ProjectInventoryVerificationError.changed(path.path)
         }
@@ -447,7 +494,8 @@ public struct ProjectInventoryScanner: Sendable {
             latestActivity: totals.latestActivity,
             logicalBytes: totals.logicalBytes,
             fileCount: totals.fileCount,
-            isInactive: totals.latestActivity < cutoff
+            isInactive: totals.latestActivity < cutoff,
+            symbolicLinks: totals.symbolicLinks
         )
     }
 
@@ -500,7 +548,7 @@ public struct ProjectInventoryScanner: Sendable {
         while let (directory, expectedIdentity) = stack.popLast() {
             try Task.checkCancellation()
             if let maxInspectionEntries, context.inspectedEntryCount >= maxInspectionEntries {
-                totals.inspectionIncomplete = true
+                totals.block(.inspectionLimitReached, at: directory)
                 totals.inspectionLimitReached = true
                 return totals
             }
@@ -508,7 +556,7 @@ public struct ProjectInventoryScanner: Sendable {
             guard lstat(directory.path, &current) == 0,
                   current.st_mode & S_IFMT == S_IFDIR,
                   ArchiveFileIdentity(metadata: current, kind: .directory) == expectedIdentity else {
-                totals.block(.changedDuringInspection)
+                totals.block(.changedDuringInspection, at: directory)
                 continue
             }
             let entries: [URL]
@@ -520,7 +568,7 @@ public struct ProjectInventoryScanner: Sendable {
                 )
             } catch {
                 context.skippedDirectoryCount += 1
-                totals.inspectionIncomplete = true
+                totals.block(.incompleteInspection, at: directory)
                 continue
             }
 
@@ -528,7 +576,7 @@ public struct ProjectInventoryScanner: Sendable {
                 try Task.checkCancellation()
                 if maxProjectEntries.map({ projectEntryCount >= $0 }) == true
                     || maxInspectionEntries.map({ context.inspectedEntryCount >= $0 }) == true {
-                    totals.inspectionIncomplete = true
+                    totals.block(.inspectionLimitReached, at: entry)
                     totals.inspectionLimitReached = true
                     return totals
                 }
@@ -539,7 +587,7 @@ public struct ProjectInventoryScanner: Sendable {
                 guard lstat(entry.path, &metadata) == 0,
                       UInt64(metadata.st_dev) == rootDevice
                 else {
-                    totals.inspectionIncomplete = true
+                    totals.block(.incompleteInspection, at: entry)
                     continue
                 }
                 totals.latestActivity = max(totals.latestActivity, modificationDate(metadata))
@@ -548,7 +596,7 @@ public struct ProjectInventoryScanner: Sendable {
                     if isProtectedMediaDirectory(entry, scanRoot: scanRoot) {
                         totals.containsProtectedMedia = true
                     } else if isProtectedContentDirectory(entry.lastPathComponent) {
-                        totals.block(.protectedDirectory)
+                        totals.block(.protectedDirectory, at: entry)
                     } else {
                         stack.append((entry, ArchiveFileIdentity(metadata: metadata, kind: .directory)))
                     }
@@ -559,12 +607,34 @@ public struct ProjectInventoryScanner: Sendable {
                         totals.logicalBytes += UInt64(max(0, metadata.st_size))
                     }
                 case S_IFLNK:
-                    totals.block(.symbolicLink)
+                    guard let destination = try? FileManager.default.destinationOfSymbolicLink(atPath: entry.path) else {
+                        totals.block(.incompleteInspection, at: entry)
+                        continue
+                    }
+                    let link = ProjectSymbolicLink(path: entry, destination: destination, metadata: metadata)
+                    var afterRead = stat()
+                    guard lstat(entry.path, &afterRead) == 0, afterRead.st_mode & S_IFMT == S_IFLNK,
+                          link == ProjectSymbolicLink(path: entry, destination: destination, metadata: afterRead) else {
+                        totals.block(.changedDuringInspection, at: entry)
+                        continue
+                    }
+                    totals.symbolicLinks.append(link)
+                    let key = ProjectFileKey(device: UInt64(metadata.st_dev), inode: UInt64(metadata.st_ino))
+                    if seenFiles.insert(key).inserted {
+                        totals.fileCount += 1
+                        totals.logicalBytes += UInt64(max(0, metadata.st_size))
+                    }
                 default:
                     // Never follow links or silently approve an incompletely inspected target.
-                    totals.block(.unsupportedEntry)
+                    totals.block(.unsupportedEntry, at: entry)
                     continue
                 }
+            }
+            var afterEnumeration = stat()
+            if lstat(directory.path, &afterEnumeration) != 0
+                || afterEnumeration.st_mode & S_IFMT != S_IFDIR
+                || ArchiveFileIdentity(metadata: afterEnumeration, kind: .directory) != expectedIdentity {
+                totals.block(.changedDuringInspection, at: directory)
             }
         }
         return totals
@@ -682,10 +752,18 @@ private struct ProjectTotals {
     var inspectionIncomplete = false
     var inspectionLimitReached = false
     var specificBlockReason: ProjectCleanupBlockReason?
+    var issues: [ProjectInspectionIssue] = []
+    var issueCount = 0
+    var symbolicLinks: [ProjectSymbolicLink] = []
 
-    mutating func block(_ reason: ProjectCleanupBlockReason) {
+    mutating func block(_ reason: ProjectCleanupBlockReason, at path: URL, linkDestination: String? = nil) {
         inspectionIncomplete = true
         if specificBlockReason == nil { specificBlockReason = reason }
+        issueCount += 1
+        // Limit retained diagnostics, not the underlying scan.
+        if issues.count < 20 {
+            issues.append(ProjectInspectionIssue(path: path, reason: reason, linkDestination: linkDestination))
+        }
     }
 
     var cleanupBlockReason: ProjectCleanupBlockReason? {

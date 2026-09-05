@@ -16,10 +16,10 @@ Coding Harness 产生的本地存储。
 
 ## 下载
 
-[**下载 Crab v0.2.7 Apple Silicon 版 →**](https://github.com/qinthqod/Crab/releases/download/v0.2.7/Crab-0.2.7-macOS-arm64.dmg)
+[**下载 Crab v0.2.8 Apple Silicon 版 →**](https://github.com/qinthqod/Crab/releases/download/v0.2.8/Crab-0.2.8-macOS-arm64.dmg)
 
 Crab 需要 Apple Silicon 与 macOS 14 或更高版本。安装前可下载
-[SHA-256 校验文件](https://github.com/qinthqod/Crab/releases/download/v0.2.7/SHA256SUMS.txt)。
+[SHA-256 校验文件](https://github.com/qinthqod/Crab/releases/download/v0.2.8/SHA256SUMS.txt)。
 全部版本和发布说明请前往 [GitHub Releases](https://github.com/qinthqod/Crab/releases)。
 
 > **macOS 首次打开说明：**当前公开测试版采用 ad-hoc 签名，尚未经过 Apple 公证。
@@ -72,7 +72,8 @@ docs/             产品、工程、安全、研究和技术规格
 - 不自动选择，也不自动清理。
 - 缓存规则只允许经过审核的精确目录。Crab 不会清理宽泛的 Application Support、对话、凭据、模型权重或下载目录。
 - 项目根目录会自动关联到已安装的 AI 应用；每个已选项目在执行前都会再次校验。
-- 文件身份变化、符号链接路径、过期计划和安全边界外路径都会触发停止处理。
+- 文件身份变化、项目根目录或祖先路径为符号链接、过期计划和安全边界外路径都会触发停止处理。
+- 项目内的正常符号链接不会阻止清理：只随项目目录移动链接本身，不沿链接扫描或清理外部目标；清理前会再次核对每个链接。
 - 项目扫描明确排除照片和 Apple Music 资料库。
 - 不需要账户、遥测、分析、上传或云服务。
 
@@ -83,14 +84,14 @@ docs/             产品、工程、安全、研究和技术规格
 ## 系统要求
 
 - macOS 14 或更高版本
-- 可下载的 v0.2.7 测试版适用于 Apple Silicon
+- 可下载的 v0.2.8 测试版适用于 Apple Silicon
 - Intel Mac 可使用兼容的 Swift 6 工具链从源码构建
 - 从源码构建需要 Swift 6 工具链
 
 ## 安装公开测试版
 
-下载 [`Crab-0.2.7-macOS-arm64.dmg`](https://github.com/qinthqod/Crab/releases/download/v0.2.7/Crab-0.2.7-macOS-arm64.dmg)
-和 [`SHA256SUMS.txt`](https://github.com/qinthqod/Crab/releases/download/v0.2.7/SHA256SUMS.txt)，
+下载 [`Crab-0.2.8-macOS-arm64.dmg`](https://github.com/qinthqod/Crab/releases/download/v0.2.8/Crab-0.2.8-macOS-arm64.dmg)
+和 [`SHA256SUMS.txt`](https://github.com/qinthqod/Crab/releases/download/v0.2.8/SHA256SUMS.txt)，
 验证校验值并打开磁盘映像，然后把 `Crab.app` 拖到“Applications（应用程序）”快捷方式。
 复制完成后推出 Crab 磁盘映像。
 

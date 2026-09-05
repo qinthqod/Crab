@@ -20,6 +20,125 @@ private func expect(
 }
 
 private let tests: [(String, () throws -> Void)] = [
+    ("Project Trash execution moves links but leaves external targets and media libraries untouched", {
+        try withTemporaryHome { outside in
+            let external = outside.appendingPathComponent("Library.photoslibrary")
+            try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
+            let data = Data([7, 8, 9])
+            let protectedFile = external.appendingPathComponent("unique.bin")
+            try data.write(to: protectedFile)
+            try withTemporaryHome { home in
+                let project = home.appendingPathComponent("Project")
+                try FileManager.default.createDirectory(at: project.appendingPathComponent(".git"), withIntermediateDirectories: true)
+                try Data().write(to: project.appendingPathComponent("AGENTS.md"))
+                try FileManager.default.createSymbolicLink(atPath: project.appendingPathComponent("external").path, withDestinationPath: external.path)
+                try FileManager.default.createSymbolicLink(atPath: project.appendingPathComponent("cycle").path, withDestinationPath: ".")
+                let result = try ProjectInventoryScanner().scan(rootURLs: [home],
+                    rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]), installedAppIDs: ["com.openai.codex"])
+                guard let item = result.projects.first else { throw TestFailure(description: "Missing linked fixture") }
+                try expect(item.canClean && !result.hasIncompleteResults && item.symbolicLinks.count == 2,
+                    "External and cyclic link targets must not be visited")
+                try expect(item.logicalBytes == UInt64(external.path.utf8.count + 1), "Exclude external target bytes")
+                let plan = try ProjectCleanupPlanBuilder().build(inventory: result, selectedProjectIDs: [item.id], homeURL: home)
+                let moved = home.appendingPathComponent("TestTrash/Project")
+                try FileManager.default.createDirectory(at: moved.deletingLastPathComponent(), withIntermediateDirectories: true)
+                let receipt = try ProjectCleanupExecutor(trashMover: FixtureProjectDirectoryMover(destination: moved)).execute(plan: plan)
+                try expect(receipt.moved.count == 1 && !FileManager.default.fileExists(atPath: project.path), "Move the selected project directory once")
+                let saved = try Data(contentsOf: protectedFile)
+                try expect(saved == data, "External contents must remain intact after a real filesystem move of the fixture")
+                let destination = try FileManager.default.destinationOfSymbolicLink(atPath: moved.appendingPathComponent("external").path)
+                try expect(destination == external.path, "Move the link itself without rewriting its target")
+            }
+        }
+    }),
+    ("Replacing a nested link invalidates cleanup even when aggregate project metadata matches", {
+        try withTemporaryHome { home in
+            let project = home.appendingPathComponent("Project")
+            let nested = project.appendingPathComponent("links")
+            try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: project.appendingPathComponent(".git"), withIntermediateDirectories: true)
+            let marker = project.appendingPathComponent("AGENTS.md")
+            try Data().write(to: marker)
+            try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(3_600)], ofItemAtPath: marker.path)
+            let linkURL = nested.appendingPathComponent("dependency")
+            try FileManager.default.createSymbolicLink(atPath: linkURL.path, withDestinationPath: "../../external-a")
+            let scanner = ProjectInventoryScanner()
+            let rules = ProjectAssociationCatalog.rules(for: ["com.openai.codex"])
+            let result = try scanner.scan(rootURLs: [home], rules: rules, installedAppIDs: ["com.openai.codex"])
+            guard let original = result.projects.first else { throw TestFailure(description: "Missing link fixture") }
+            _ = try scanner.revalidateForTrash(original, homeURL: home, scannedAt: result.scannedAt)
+            try FileManager.default.removeItem(at: linkURL)
+            try FileManager.default.createSymbolicLink(atPath: linkURL.path, withDestinationPath: "../../external-b")
+            let changed = try scanner.scan(rootURLs: [home], rules: rules, installedAppIDs: ["com.openai.codex"])
+            guard let latest = changed.projects.first else { throw TestFailure(description: "Missing changed fixture") }
+            try expect(original.identity == latest.identity && original.logicalBytes == latest.logicalBytes
+                && original.fileCount == latest.fileCount && original.latestActivity == latest.latestActivity,
+                "The fixture must evade aggregate-only checks")
+            try expectThrows("Changed link evidence must block the old snapshot") {
+                _ = try scanner.revalidateForTrash(original, homeURL: home, scannedAt: result.scannedAt)
+            }
+        }
+    }),
+    ("Project advice retains dependency link locations and raw destinations through indexed ownership merging", {
+        try withTemporaryHome { home in
+            let project = home.appendingPathComponent("Project")
+            let bin = project.appendingPathComponent("node_modules/.bin")
+            let target = project.appendingPathComponent("node_modules/vite/bin/vite.js")
+            try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: project.appendingPathComponent(".git"), withIntermediateDirectories: true)
+            try Data().write(to: project.appendingPathComponent("AGENTS.md"))
+            try Data([1, 2, 3]).write(to: target)
+            let linkURL = bin.appendingPathComponent("vite")
+            try FileManager.default.createSymbolicLink(atPath: linkURL.path, withDestinationPath: "../vite/bin/vite.js")
+            let result = try ProjectInventoryScanner().scan(rootURLs: [home],
+                rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]), installedAppIDs: ["com.openai.codex"],
+                evidencedProjectURLsByAppID: ["com.openai.codex": [project]])
+            guard let item = result.projects.first else { throw TestFailure(description: "Missing fixture project") }
+            try expect(item.inspectionIssueCount == 0 && item.symbolicLinks.count == 1, "Normal dependency links are scope evidence, not blocking issues")
+            try expect(item.symbolicLinks.first?.path.standardizedFileURL.path == linkURL.standardizedFileURL.path && item.symbolicLinks.first?.destination == "../vite/bin/vite.js",
+                "Show the actual link and destination without substituting a resolved path")
+            try expect(item.canClean && item.logicalBytes == 3 + UInt64("../vite/bin/vite.js".utf8.count) && item.fileCount == 3,
+                "Count the link itself without double-counting target content")
+        }
+    }),
+    ("Dangling project links retain complete evidence without following absent targets", {
+        try withTemporaryHome { home in
+            let project = home.appendingPathComponent("IndexedProject")
+            try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+            for index in 0..<30 {
+                try FileManager.default.createSymbolicLink(atPath: project.appendingPathComponent("link-\(index)").path,
+                    withDestinationPath: "../../missing-target-\(index)")
+            }
+            try Data([1, 2, 3, 4]).write(to: project.appendingPathComponent("result.bin"))
+            let result = try ProjectInventoryScanner().scan(rootURLs: [home],
+                rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]), installedAppIDs: ["com.openai.codex"],
+                evidencedProjectURLsByAppID: ["com.openai.codex": [project]])
+            guard let item = result.projects.first else { throw TestFailure(description: "Missing indexed fixture") }
+            try expect(item.inspectionIssueCount == 0 && item.symbolicLinks.count == 30, "Retain every link for pre-Trash validation")
+            try expect(item.symbolicLinks.allSatisfy { $0.destination.hasPrefix("../../missing-target-") },
+                "Read only link text, even when its target is absent")
+            let linkBytes = (0..<30).reduce(0) { $0 + UInt64("../../missing-target-\($1)".utf8.count) }
+            try expect(item.logicalBytes == 4 + linkBytes && item.fileCount == 31 && item.canClean,
+                "Dangling link entries do not prevent whole-project cleanup")
+        }
+    }),
+    ("Project advice identifies protected directories without inspecting their contents", {
+        try withTemporaryHome { home in
+            let project = home.appendingPathComponent("Project")
+            let protected = project.appendingPathComponent("Library")
+            try FileManager.default.createDirectory(at: protected, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: project.appendingPathComponent(".git"), withIntermediateDirectories: true)
+            try Data().write(to: project.appendingPathComponent("AGENTS.md"))
+            try Data([1, 2, 3]).write(to: protected.appendingPathComponent("private-data"))
+            let result = try ProjectInventoryScanner().scan(rootURLs: [home],
+                rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]), installedAppIDs: ["com.openai.codex"])
+            guard let item = result.projects.first else { throw TestFailure(description: "Missing protected fixture") }
+            try expect(item.inspectionIssues.first?.reason == .protectedDirectory && item.inspectionIssues.first?.path.standardizedFileURL.path == protected.standardizedFileURL.path,
+                "Advice must identify the exact directory requiring review")
+            try expect(item.logicalBytes == 0 && !item.canClean, "Do not inspect protected content to generate advice")
+        }
+    }),
     ("Default project scans inspect deep projects completely before returning", {
         try withTemporaryHome { home in
             let entryCount = max(40, Int(ProcessInfo.processInfo.environment["CRAB_LARGE_PROJECT_TEST_ENTRIES"] ?? "") ?? 40)
@@ -304,12 +423,12 @@ private let tests: [(String, () throws -> Void)] = [
             let project = home.appendingPathComponent("Projects/Linked")
             try FileManager.default.createDirectory(at: project.appendingPathComponent(".git"), withIntermediateDirectories: true)
             try Data().write(to: project.appendingPathComponent("AGENTS.md"))
-            try FileManager.default.createSymbolicLink(at: project.appendingPathComponent("dependency"), withDestinationURL: home)
+            try FileManager.default.createDirectory(at: project.appendingPathComponent("Library"), withIntermediateDirectories: true)
             let inventory = try ProjectInventoryScanner().scan(rootURLs: [home],
                 rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]), installedAppIDs: ["com.openai.codex"])
             guard let item = inventory.projects.first else { throw TestFailure(description: "Must show the protected project") }
-            try expect(!item.canClean && item.cleanupBlockReason == .symbolicLink,
-                "A symlink remains protected and must be distinguished from an unfinished scan")
+            try expect(!item.canClean && item.cleanupBlockReason == .protectedDirectory,
+                "Actual protected directories must still block whole-project cleanup")
             var selection = ProjectCleanupSelection(inventory: inventory)
             selection.setSelected(item.id, selected: true)
             try expect(selection.selectedProjects.isEmpty, "Protected projects must remain unselected")
@@ -328,9 +447,9 @@ private let tests: [(String, () throws -> Void)] = [
             "The project cleanup menu symbol must exist on the supported macOS version"
         )
     }),
-    ("Version identifies the 0.2.7 release", {
+    ("Version identifies the 0.2.8 release", {
         try expect(
-            CrabCore.version == "0.2.7",
+            CrabCore.version == "0.2.8",
             "Expected release version, got \(CrabCore.version)"
         )
     }),
@@ -3389,6 +3508,13 @@ private final class RecordingProjectScanProgress: @unchecked Sendable {
 
     func append(_ progress: ProjectInventoryProgress) {
         lock.withLock { storage.append(progress) }
+    }
+}
+
+private struct FixtureProjectDirectoryMover: TrashMoving {
+    let destination: URL
+    func moveToTrash(_ url: URL) throws {
+        try FileManager.default.moveItem(at: url, to: destination)
     }
 }
 

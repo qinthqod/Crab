@@ -6,6 +6,7 @@ struct ArchiveReminderView: View {
     @ObservedObject var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeAlert: ProjectCleanupAlert?
+    @State private var adviceProject: ProjectInventoryItem?
     @State private var disclosureState = ProjectGroupDisclosureState()
     @State private var searchText = ""
     @State private var selectedFilter: ProjectCleanupFilter = .all
@@ -33,6 +34,12 @@ struct ArchiveReminderView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { model.scanProjects() }
+        .sheet(item: $adviceProject) { project in
+            ProjectInspectionAdviceView(project: project) {
+                adviceProject = nil
+                model.scanProjects(force: true)
+            }
+        }
         .onChange(of: model.projectCleanupState) { _, state in
             switch state {
             case let .succeeded(message):
@@ -435,9 +442,25 @@ struct ArchiveReminderView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                 if !project.canClean {
-                    Text(cleanupBlockMessage(project.cleanupBlockReason))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
+                    HStack(spacing: 8) {
+                        Text(ProjectInspectionAdvice.title(project.cleanupBlockReason))
+                            .foregroundStyle(.secondary)
+                        Button(CrabL10n.text("查看原因与建议", "View Details & Advice")) {
+                            adviceProject = project
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.crabPurple)
+                    }
+                    .font(.system(size: 11))
+                } else if !project.symbolicLinks.isEmpty {
+                    HStack(spacing: 8) {
+                        Text(CrabL10n.format("%d 个链接 · 外部目标不参与清理", "%d links · external targets excluded", project.symbolicLinks.count))
+                            .foregroundStyle(.secondary)
+                        Button(CrabL10n.text("查看范围", "View Scope")) { adviceProject = project }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Color.crabPurple)
+                    }
+                    .font(.system(size: 11))
                 }
             }
             Spacer(minLength: 18)
@@ -496,23 +519,6 @@ struct ArchiveReminderView: View {
         .padding(.vertical, 14)
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) { Divider() }
-    }
-
-    private func cleanupBlockMessage(_ reason: ProjectCleanupBlockReason?) -> String {
-        switch reason {
-        case .symbolicLink:
-            CrabL10n.text("含符号链接，为避免影响链接目标，不能清理", "Contains symbolic links · cleanup disabled to protect linked files")
-        case .protectedDirectory:
-            CrabL10n.text("含受保护目录，不能清理", "Contains a protected directory · cleanup disabled")
-        case .unsupportedEntry:
-            CrabL10n.text("含无法安全处理的特殊文件，不能清理", "Contains unsupported special files · cleanup disabled")
-        case .changedDuringInspection:
-            CrabL10n.text("扫描期间目录发生变化，请重新扫描", "Directory changed during inspection · scan again")
-        case .inspectionLimitReached:
-            CrabL10n.text("达到检查上限，仅显示已统计大小，不能清理", "Inspection limit reached · partial size · cleanup disabled")
-        case .incompleteInspection, nil:
-            CrabL10n.text("部分文件无法读取或已发生变化，不能清理", "Some files could not be read or have changed · cleanup disabled")
-        }
     }
 
     private var emptyState: some View {
