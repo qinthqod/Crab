@@ -235,6 +235,31 @@ private let tests: [(String, () throws -> Void)] = [
             "An unusable primary response must not prevent a valid manifest fallback"
         )
     }),
+    ("Startup update checks run only once per application launch", {
+        var state = CrabLaunchUpdateCheckState()
+
+        try expect(state.beginCheckIfNeeded(), "The first window appearance should start the launch update check")
+        try expect(!state.beginCheckIfNeeded(), "Reopening the main window must not repeat the launch update check")
+    }),
+    ("Startup update notice appears only for a validated available offer", {
+        let offer = CrabAppUpdateOffer(
+            latestVersion: "0.3.0",
+            releaseURL: URL(string: "https://github.com/qinthqod/Crab/releases/tag/v0.3.0")!,
+            assetURL: URL(string: "https://github.com/qinthqod/Crab/releases/download/v0.3.0/Crab-0.3.0-macOS-arm64.zip")!,
+            assetName: "Crab-0.3.0-macOS-arm64.zip",
+            assetSize: 1_024,
+            sha256: String(repeating: "a", count: 64)
+        )
+
+        try expect(
+            CrabLaunchUpdateCheckState.availableOffer(from: .available(offer)) == offer,
+            "A validated newer release should produce the top-right notice"
+        )
+        try expect(
+            CrabLaunchUpdateCheckState.availableOffer(from: .upToDate) == nil,
+            "Up-to-date and failed checks must stay silent in the main window"
+        )
+    }),
     ("Crab update digest verifies SHA-256 without loading an archive contract", {
         try expect(
             CrabUpdateDigest.sha256Hex(of: Data("abc".utf8))

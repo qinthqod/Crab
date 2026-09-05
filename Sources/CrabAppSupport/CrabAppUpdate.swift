@@ -37,6 +37,25 @@ public enum CrabAppUpdateStatus: Equatable, Sendable {
     case failed
 }
 
+public struct CrabLaunchUpdateCheckState: Equatable, Sendable {
+    public private(set) var didBeginCheck = false
+
+    public init() {}
+
+    public mutating func beginCheckIfNeeded() -> Bool {
+        guard !didBeginCheck else { return false }
+        didBeginCheck = true
+        return true
+    }
+
+    public static func availableOffer(
+        from status: CrabAppUpdateStatus
+    ) -> CrabAppUpdateOffer? {
+        guard case let .available(offer) = status else { return nil }
+        return offer
+    }
+}
+
 public struct CrabAppUpdateChecker: Sendable {
     private static let maximumFeedBytes = 256 * 1_024
     private static let maximumAssetBytes: Int64 = 250 * 1_024 * 1_024
