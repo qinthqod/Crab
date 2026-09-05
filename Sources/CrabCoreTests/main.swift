@@ -1982,6 +1982,38 @@ private let tests: [(String, () throws -> Void)] = [
             )
         }
     }),
+    ("Project inventory accepts only local Codex roots from indexed metadata", {
+        try withTemporaryHome { home in
+            let indexed = home.appendingPathComponent("Projects/Indexed", isDirectory: true)
+            let protected = home.appendingPathComponent("Library/Protected", isDirectory: true)
+            let missing = home.appendingPathComponent("Projects/Missing", isDirectory: true)
+            let outside = home.deletingLastPathComponent()
+                .appendingPathComponent("crab-outside-project-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: indexed, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: protected, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: outside) }
+            try Data([1, 2, 3]).write(to: indexed.appendingPathComponent("artifact.bin"))
+
+            let result = try ProjectInventoryScanner(maxEntries: 2_000).scan(
+                rootURLs: [home],
+                rules: ProjectAssociationCatalog.rules(for: ["com.openai.codex"]),
+                installedAppIDs: ["com.openai.codex"],
+                evidencedProjectURLsByAppID: [
+                    "com.openai.codex": [indexed, indexed, protected, missing, outside],
+                ]
+            )
+
+            try expect(
+                result.projects.map(\.path) == [indexed.standardizedFileURL],
+                "Indexed roots must be deduplicated and remain inside the authorized safe scan root"
+            )
+            try expect(
+                result.projects.first?.relatedAppIDs == ["com.openai.codex"],
+                "The trusted metadata source must attribute the root to Codex"
+            )
+        }
+    }),
     ("Project application groups start collapsed and expand independently", {
         var disclosure = ProjectGroupDisclosureState()
 

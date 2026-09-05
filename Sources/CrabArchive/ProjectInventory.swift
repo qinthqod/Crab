@@ -94,6 +94,7 @@ public struct ProjectInventoryScanner: Sendable {
         rootURLs: [URL],
         rules: [ProjectApplicationRule],
         installedAppIDs: Set<String>,
+        evidencedProjectURLsByAppID: [String: [URL]] = [:],
         now: Date = Date()
     ) throws -> ProjectInventoryResult {
         guard maxEntries > 0, maxDepth > 0, inactivityDays > 0 else {
@@ -122,6 +123,14 @@ public struct ProjectInventoryScanner: Sendable {
                 now: now,
                 context: &context
             )
+            try addEvidencedProjects(
+                in: root,
+                rootDevice: UInt64(rootMetadata.st_dev),
+                rules: eligibleRules,
+                projectURLsByAppID: evidencedProjectURLsByAppID,
+                now: now,
+                context: &context
+            )
         }
 
         return ProjectInventoryResult(
@@ -129,6 +138,97 @@ public struct ProjectInventoryScanner: Sendable {
             projects: context.projects,
             skippedDirectoryCount: context.skippedDirectoryCount
         )
+    }
+
+    private func addEvidencedProjects(
+        in scanRoot: URL,
+        rootDevice: UInt64,
+        rules: [ProjectApplicationRule],
+        projectURLsByAppID: [String: [URL]],
+        now: Date,
+        context: inout ScanContext
+    ) throws {
+        let eligibleAppIDs = Set(rules.map(\.appID))
+        var appIDsByPath: [String: Set<String>] = [:]
+        for (appID, projectURLs) in projectURLsByAppID where eligibleAppIDs.contains(appID) {
+            for projectURL in projectURLs {
+                appIDsByPath[projectURL.standardizedFileURL.path, default: []].insert(appID)
+            }
+        }
+
+        for path in appIDsByPath.keys.sorted() {
+            let projectURL = URL(fileURLWithPath: path, isDirectory: true)
+            guard isSafeEvidencedProject(projectURL, scanRoot: scanRoot, rootDevice: rootDevice),
+                  let appIDs = appIDsByPath[path],
+                  !appIDs.isEmpty
+            else { continue }
+
+            if let index = context.projects.firstIndex(where: { $0.path.path == path }) {
+                let project = context.projects[index]
+                let relatedAppIDs = Set(project.relatedAppIDs).union(appIDs).sorted()
+                context.projects[index] = ProjectInventoryItem(
+                    path: project.path,
+                    identity: project.identity,
+                    primaryAppID: project.primaryAppID,
+                    relatedAppIDs: relatedAppIDs,
+                    latestActivity: project.latestActivity,
+                    logicalBytes: project.logicalBytes,
+                    fileCount: project.fileCount,
+                    isInactive: project.isInactive
+                )
+                continue
+            }
+
+            let totals = try summarizeProject(
+                projectURL,
+                scanRoot: scanRoot,
+                rootDevice: rootDevice,
+                context: &context
+            )
+            guard !totals.containsProtectedMedia else { continue }
+            let cutoff = now.addingTimeInterval(-TimeInterval(inactivityDays) * 86_400)
+            let sortedAppIDs = appIDs.sorted()
+            context.seenProjectPaths.insert(path)
+            context.projects.append(ProjectInventoryItem(
+                path: projectURL,
+                identity: totals.identity,
+                primaryAppID: sortedAppIDs[0],
+                relatedAppIDs: sortedAppIDs,
+                latestActivity: totals.latestActivity,
+                logicalBytes: totals.logicalBytes,
+                fileCount: totals.fileCount,
+                isInactive: totals.latestActivity < cutoff
+            ))
+        }
+    }
+
+    private func isSafeEvidencedProject(
+        _ projectURL: URL,
+        scanRoot: URL,
+        rootDevice: UInt64
+    ) -> Bool {
+        let root = scanRoot.standardizedFileURL
+        let project = projectURL.standardizedFileURL
+        let rootPrefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        guard project.path.hasPrefix(rootPrefix) else { return false }
+
+        let relativePath = String(project.path.dropFirst(rootPrefix.count))
+        let components = relativePath.split(separator: "/").map(String.init)
+        guard !components.isEmpty,
+              !isProtectedMediaRootName(components[0]),
+              components.allSatisfy({ !shouldSkipDirectory(named: $0) && !isMediaLibraryName($0) })
+        else { return false }
+
+        var cursor = root
+        for component in components {
+            cursor.appendPathComponent(component, isDirectory: true)
+            var metadata = stat()
+            guard lstat(cursor.path, &metadata) == 0,
+                  metadata.st_mode & S_IFMT == S_IFDIR,
+                  UInt64(metadata.st_dev) == rootDevice
+            else { return false }
+        }
+        return true
     }
 
     private func discoverProjects(
