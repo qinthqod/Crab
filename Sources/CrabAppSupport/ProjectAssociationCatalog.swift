@@ -1,4 +1,5 @@
 import CrabArchive
+import Foundation
 
 public struct ProjectGroupDisclosureState: Equatable, Sendable {
     public private(set) var expandedAppIDs: Set<String>
@@ -66,6 +67,17 @@ public enum ProjectAssociationCatalog {
 
     public static func rules(for installedAppIDs: Set<String>) -> [ProjectApplicationRule] {
         supported.filter { installedAppIDs.contains($0.appID) }
+    }
+
+    public static func evidencedProjectURLsByAppID(
+        for installedAppIDs: Set<String>,
+        homeURL: URL
+    ) -> [String: [URL]] {
+        guard installedAppIDs.contains("com.openai.codex"),
+              let metadata = CodexProjectMetadataScanner().scan(homeURL: homeURL),
+              !metadata.rootURLs.isEmpty
+        else { return [:] }
+        return ["com.openai.codex": metadata.rootURLs]
     }
 
     public static func displayName(for appID: String) -> String {

@@ -1189,6 +1189,31 @@ private let tests: [(String, () throws -> Void)] = [
             )
         }
     }),
+    ("Project association exposes Codex roots only while Codex is installed", {
+        try withTemporaryHome { home in
+            let root = home.appendingPathComponent("Projects/Indexed", isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try makeCodexProjectStateDatabase(
+                in: home,
+                projects: [(id: "project-1", root: root)]
+            )
+
+            try expect(
+                ProjectAssociationCatalog.evidencedProjectURLsByAppID(
+                    for: ["com.openai.codex"],
+                    homeURL: home
+                ) == ["com.openai.codex": [root]],
+                "Installed Codex should contribute its indexed project roots"
+            )
+            try expect(
+                ProjectAssociationCatalog.evidencedProjectURLsByAppID(
+                    for: [],
+                    homeURL: home
+                ).isEmpty,
+                "An uninstalled application must not contribute project roots"
+            )
+        }
+    }),
     ("Harness usage hides Codex Tokens when no trusted metadata database exists", {
         try withTemporaryHome { home in
             let summaries = HarnessUsageScanner().scan(

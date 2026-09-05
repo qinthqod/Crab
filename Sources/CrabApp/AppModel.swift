@@ -321,10 +321,15 @@ final class AppModel: ObservableObject {
                             lastUsedDateProvider: { _ in nil }
                         )
                         let rules = ProjectAssociationCatalog.rules(for: inventory.installedAppIDs)
+                        let evidencedProjects = ProjectAssociationCatalog.evidencedProjectURLsByAppID(
+                            for: inventory.installedAppIDs,
+                            homeURL: homeDirectory
+                        )
                         let result = try ProjectInventoryScanner().scan(
                             rootURLs: [scanRoot],
                             rules: rules,
-                            installedAppIDs: inventory.installedAppIDs
+                            installedAppIDs: inventory.installedAppIDs,
+                            evidencedProjectURLsByAppID: evidencedProjects
                         )
                         return ProjectInventoryWorkResult.success(inventory: inventory, result: result)
                     }
