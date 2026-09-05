@@ -260,6 +260,25 @@ private let tests: [(String, () throws -> Void)] = [
             "Up-to-date and failed checks must stay silent in the main window"
         )
     }),
+    ("Startup update notice starts a direct in-app install", {
+        let offer = CrabAppUpdateOffer(
+            latestVersion: "0.3.0",
+            releaseURL: URL(string: "https://github.com/qinthqod/Crab/releases/tag/v0.3.0")!,
+            assetURL: URL(string: "https://github.com/qinthqod/Crab/releases/download/v0.3.0/Crab-0.3.0-macOS-arm64.zip")!,
+            assetName: "Crab-0.3.0-macOS-arm64.zip",
+            assetSize: 1_024,
+            sha256: String(repeating: "a", count: 64)
+        )
+
+        try expect(
+            CrabLaunchUpdateCheckState.homeAction(from: .available(offer)) == .install(offer),
+            "Clicking the top-right update notice must start the in-app installer"
+        )
+        try expect(
+            CrabLaunchUpdateCheckState.homeAction(from: .upToDate) == nil,
+            "The home page must not expose an update action without a validated offer"
+        )
+    }),
     ("Crab update digest verifies SHA-256 without loading an archive contract", {
         try expect(
             CrabUpdateDigest.sha256Hex(of: Data("abc".utf8))

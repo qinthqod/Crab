@@ -49,7 +49,7 @@ and all available versions.
   Chinese or English preference.
 - **In-app Updates** — checks Crab's official GitHub Release feed once when the
   app starts. A quiet top-right notice appears only when a verified newer
-  version is available; installation still requires explicit confirmation.
+  version is available; clicking it directly verifies and installs the update.
 
 Current rules cover installed products such as ChatGPT, Claude and Claude Code,
 Cursor, Codex, DeepSeek Harness, Windsurf, TRAE, Zed, Ollama, and Doubao variants.
@@ -117,7 +117,8 @@ verify the checksum, open the disk image, and drag `Crab.app` onto the
 
 Version 0.1.1 added user-confirmed updates inside Crab. Because 0.1.0 did not contain
 the installer, upgrading from 0.1.0 to 0.1.1 is the final manual update. Later
-compatible releases can be installed from Settings.
+compatible releases can be installed directly from the update notice on the Crab
+home screen or from Settings.
 
 ### First launch on macOS
 

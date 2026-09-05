@@ -1,3 +1,4 @@
+import CrabAppSupport
 import SwiftUI
 
 struct MainView: View {
@@ -117,19 +118,21 @@ struct MainView: View {
             Spacer()
 
             Group {
-                if let offer = settings.availableUpdateOffer {
-                    SettingsLink {
+                if let offer = settings.homeUpdateOffer {
+                    Button {
+                        settings.installAvailableUpdate()
+                    } label: {
                         Label {
-                            Text(CrabL10n.format(
-                                "更新 %@",
-                                "Update %@",
-                                normalizedVersion(offer.latestVersion)
-                            ))
+                            Text(homeUpdateTitle(for: offer))
                         } icon: {
-                            Image(systemName: "arrow.down.circle.fill")
+                            if settings.updateActionState.isBusy {
+                                CrabLoadingIndicator(size: 16, motion: .pinch)
+                            } else {
+                                Image(systemName: homeUpdateIcon)
+                            }
                         }
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.crabPurple)
+                        .foregroundStyle(homeUpdateColor)
                         .padding(.horizontal, 11)
                         .frame(height: 30)
                         .background(Color.crabLavender, in: Capsule())
@@ -138,15 +141,9 @@ struct MainView: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .help(CrabL10n.text(
-                        "打开设置以下载并安装更新",
-                        "Open Settings to download and install the update"
-                    ))
-                    .accessibilityLabel(CrabL10n.format(
-                        "发现 Crab 新版本 %@",
-                        "Crab version %@ is available",
-                        normalizedVersion(offer.latestVersion)
-                    ))
+                    .disabled(settings.updateActionState.isBusy)
+                    .help(homeUpdateHelp(for: offer))
+                    .accessibilityLabel(homeUpdateAccessibilityLabel(for: offer))
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {
                     Color.clear
@@ -157,7 +154,7 @@ struct MainView: View {
             .frame(width: 150, alignment: .trailing)
             .animation(
                 reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 1),
-                value: settings.availableUpdateOffer?.latestVersion
+                value: settings.homeUpdateOffer?.latestVersion
             )
         }
         .padding(.horizontal, 24)
@@ -168,6 +165,85 @@ struct MainView: View {
 
     private func normalizedVersion(_ version: String) -> String {
         version.hasPrefix("v") ? String(version.dropFirst()) : version
+    }
+
+    private func homeUpdateTitle(for offer: CrabAppUpdateOffer) -> String {
+        switch settings.updateActionState {
+        case .downloading:
+            CrabL10n.text("正在下载", "Downloading")
+        case .installing:
+            CrabL10n.text("正在安装", "Installing")
+        case .relaunching:
+            CrabL10n.text("正在重启", "Restarting")
+        case .failed:
+            CrabL10n.format(
+                "重试 %@",
+                "Retry %@",
+                normalizedVersion(offer.latestVersion)
+            )
+        case .idle:
+            CrabL10n.format(
+                "更新 %@",
+                "Update %@",
+                normalizedVersion(offer.latestVersion)
+            )
+        }
+    }
+
+    private var homeUpdateIcon: String {
+        if case .failed = settings.updateActionState {
+            return "exclamationmark.triangle.fill"
+        }
+        return "arrow.down.circle.fill"
+    }
+
+    private var homeUpdateColor: Color {
+        if case .failed = settings.updateActionState {
+            return .orange
+        }
+        return .crabPurple
+    }
+
+    private func homeUpdateHelp(for offer: CrabAppUpdateOffer) -> String {
+        switch settings.updateActionState {
+        case .downloading:
+            CrabL10n.text("正在从 Crab 官方发布源下载更新", "Downloading from Crab's official release source")
+        case .installing:
+            CrabL10n.text("正在校验并安全安装更新", "Verifying and securely installing the update")
+        case .relaunching:
+            CrabL10n.text("更新完成后将自动重新打开 Crab", "Crab will reopen automatically after updating")
+        case let .failed(message):
+            message
+        case .idle:
+            CrabL10n.format(
+                "直接下载并安装 Crab %@",
+                "Download and install Crab %@ directly",
+                normalizedVersion(offer.latestVersion)
+            )
+        }
+    }
+
+    private func homeUpdateAccessibilityLabel(for offer: CrabAppUpdateOffer) -> String {
+        switch settings.updateActionState {
+        case .downloading:
+            CrabL10n.text("正在下载 Crab 更新", "Downloading Crab update")
+        case .installing:
+            CrabL10n.text("正在安装 Crab 更新", "Installing Crab update")
+        case .relaunching:
+            CrabL10n.text("正在重新打开 Crab", "Reopening Crab")
+        case .failed:
+            CrabL10n.format(
+                "更新失败，点击重试 Crab %@",
+                "Update failed. Retry Crab %@",
+                normalizedVersion(offer.latestVersion)
+            )
+        case .idle:
+            CrabL10n.format(
+                "发现 Crab 新版本 %@，点击直接更新",
+                "Crab version %@ is available. Click to update directly",
+                normalizedVersion(offer.latestVersion)
+            )
+        }
     }
 
     private var isLoading: Bool {

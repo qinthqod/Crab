@@ -47,9 +47,11 @@ final class CrabSettingsModel: ObservableObject {
         return build?.isEmpty == false ? build : nil
     }
 
-    var availableUpdateOffer: CrabAppUpdateOffer? {
-        guard !updateActionState.isBusy else { return nil }
-        return CrabLaunchUpdateCheckState.availableOffer(from: updateState)
+    var homeUpdateOffer: CrabAppUpdateOffer? {
+        guard case let .install(offer) = CrabLaunchUpdateCheckState.homeAction(from: updateState) else {
+            return nil
+        }
+        return offer
     }
 
     func refreshLaunchAtLoginStatus() {

@@ -37,6 +37,10 @@ public enum CrabAppUpdateStatus: Equatable, Sendable {
     case failed
 }
 
+public enum CrabHomeUpdateAction: Equatable, Sendable {
+    case install(CrabAppUpdateOffer)
+}
+
 public struct CrabLaunchUpdateCheckState: Equatable, Sendable {
     public private(set) var didBeginCheck = false
 
@@ -53,6 +57,12 @@ public struct CrabLaunchUpdateCheckState: Equatable, Sendable {
     ) -> CrabAppUpdateOffer? {
         guard case let .available(offer) = status else { return nil }
         return offer
+    }
+
+    public static func homeAction(
+        from status: CrabAppUpdateStatus
+    ) -> CrabHomeUpdateAction? {
+        availableOffer(from: status).map(CrabHomeUpdateAction.install)
     }
 }
 
